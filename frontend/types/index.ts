@@ -9,3 +9,17 @@ export type { Category, CategoryId, CategoryType, CategoryOption } from './categ
 
 // Prediction types
 export type { Prediction, PredictionResult } from './prediction.types';
+
+// Gemini API types
+export type {
+  GeminiEvent,
+  GeminiEventContract,
+  GeminiEventsResponse,
+  GeminiCategoriesResponse,
+  GeminiOrder,
+  GeminiOrderRequest,
+  GeminiPosition,
+  GeminiEventsFilter,
+  GeminiContractMetadata,
+  GeminiVolumeMetrics,
+} from './gemini.types';
