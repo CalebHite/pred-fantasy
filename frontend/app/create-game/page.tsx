@@ -109,9 +109,9 @@ export default function CreateGamePage() {
     e.preventDefault();
 
     if (!validateForm()) {
-      if (selectedCategories.length < MIN_CATEGORIES_REQUIRED) {
+      if (selectedEvents.length < MIN_CATEGORIES_REQUIRED) {
         showNotification({
-          message: `Please select at least ${MIN_CATEGORIES_REQUIRED} categories`,
+          message: `Please select at least ${MIN_CATEGORIES_REQUIRED} markets`,
           type: 'error',
         });
       }
@@ -279,7 +279,6 @@ export default function CreateGamePage() {
                   </span>
                 </p>
               </div>
-            </div>
 
             {/* Continue Button */}
             <div className="w-1/2 flex justify-end">
@@ -293,31 +292,6 @@ export default function CreateGamePage() {
               >
                 Continue
               </Button>
-            </div>
-
-            {/* Categories Section */}
-            <div className="pt-8">
-              <h2 className="text-xl !font-bold text-gray-900 mb-6">Categories</h2>
-
-              <div className="inline-grid grid-cols-4 gap-0">
-                {categories.map((category) => (
-                  <CategoryIconButton
-                    key={category.id}
-                    icon={category.icon}
-                    label={category.name}
-                    selected={selectedCategories.includes(category.id)}
-                    onClick={() => handleCategoryToggle(category.id)}
-                    disabled={
-                      !selectedCategories.includes(category.id) &&
-                      selectedCategories.length >= MAX_CATEGORIES_ALLOWED
-                    }
-                  />
-                ))}
-              </div>
-
-              <p className="mt-4 text-sm font-light text-gray-600">
-                Select {MIN_CATEGORIES_REQUIRED}-{MAX_CATEGORIES_ALLOWED} categories.
-              </p>
             </div>
           </div>
         </form>
