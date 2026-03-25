@@ -26,6 +26,18 @@ export const PredictionWizard = ({
   const isFirstMarket = currentIndex === 0;
   const progress = ((currentIndex + 1) / markets.length) * 100;
 
+  // Guard against empty markets or invalid index
+  if (!currentMarket || markets.length === 0) {
+    return (
+      <div className="w-full min-h-screen bg-gray-50 py-12 px-4 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg font-medium text-gray-900 mb-2">No prediction markets available</p>
+          <p className="text-sm font-light text-gray-600">Please check back later.</p>
+        </div>
+      </div>
+    );
+  }
+
   const handleSelect = (strikeId: string) => {
     // Update predictions
     const newPredictions = {

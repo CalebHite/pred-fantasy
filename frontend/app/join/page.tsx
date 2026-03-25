@@ -25,13 +25,6 @@ export default function JoinPage() {
     router.push(`/join/${gameCode}`);
   };
 
-  const handleComplete = (code: string) => {
-    // Auto-continue when code is complete
-    if (code.length === 7) {
-      router.push(`/join/${code}`);
-    }
-  };
-
   return (
     <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center p-4 bg-gray-50">
       <div className="w-full max-w-2xl">
@@ -61,7 +54,6 @@ export default function JoinPage() {
             <GameCodeInput
               value={gameCode}
               onChange={handleGameCodeChange}
-              onComplete={handleComplete}
               error={error}
               length={7}
             />

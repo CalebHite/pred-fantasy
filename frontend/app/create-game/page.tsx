@@ -299,7 +299,7 @@ export default function CreateGamePage() {
             <div className="pt-8">
               <h2 className="text-xl !font-bold text-gray-900 mb-6">Categories</h2>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <div className="inline-grid grid-cols-4 gap-0">
                 {categories.map((category) => (
                   <CategoryIconButton
                     key={category.id}

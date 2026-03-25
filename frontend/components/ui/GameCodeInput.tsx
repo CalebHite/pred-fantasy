@@ -119,7 +119,7 @@ export const GameCodeInput = ({
           disabled={disabled}
           className={clsx(
             'w-12 h-14 text-center text-2xl font-semibold rounded-lg border transition-all bg-white',
-            'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
+            'focus:outline-none focus:ring-1 focus:ring-[#25ddf9] focus:border-[#25ddf9]',
             error
               ? 'border-red-500'
               : value

@@ -35,94 +35,53 @@ export const GameStatusIndicator = ({
     }
   }, [status, timeRemaining]);
 
-  const getStatusDisplay = () => {
-    switch (status) {
-      case 'pending':
-        return {
-          text: 'Pending',
-          color: 'text-amber-600',
-          bgColor: 'bg-amber-100',
-          dotColor: 'bg-amber-500',
-          animate: false,
-        };
-      case 'active':
-      case 'live':
-        return {
-          text: 'Live',
-          color: 'text-red-600',
-          bgColor: 'bg-red-50',
-          dotColor: 'bg-red-500',
-          animate: true,
-        };
-      case 'resolving':
-        return {
-          text: 'Resolving',
-          color: 'text-blue-600',
-          bgColor: 'bg-blue-50',
-          dotColor: 'bg-blue-500',
-          animate: true,
-        };
-      case 'completed':
-        return {
-          text: 'Completed',
-          color: 'text-green-600',
-          bgColor: 'bg-green-50',
-          dotColor: 'bg-green-500',
-          animate: false,
-        };
-      default:
-        return {
-          text: status,
-          color: 'text-gray-600',
-          bgColor: 'bg-gray-100',
-          dotColor: 'bg-gray-500',
-          animate: false,
-        };
-    }
+  // Always show "Live" with red color
+  const statusInfo = {
+    text: 'Live',
+    color: 'text-red-600',
+    dotColor: 'bg-red-600',
+    lineColor: 'bg-red-600',
+    animate: true,
   };
 
-  const statusInfo = getStatusDisplay();
-
   return (
-    <div
-      className={clsx(
-        'inline-flex items-center gap-2 px-4 py-2 rounded-full',
-        statusInfo.bgColor,
-        className
-      )}
-    >
-      {/* Pulsing Dot */}
-      <div className="relative flex items-center justify-center">
-        {statusInfo.animate && (
+    <div className={clsx('inline-flex items-center gap-3', className)}>
+      {/* Left Line */}
+      <div className={clsx('h-0.5 w-16', statusInfo.lineColor)} />
+
+      {/* Status Content */}
+      <div className="inline-flex items-center gap-2">
+        {/* Status Text */}
+        <span className={clsx('text-sm font-medium', statusInfo.color)}>
+          {statusInfo.text}
+        </span>
+
+        {/* Pulsing Dot */}
+        <div className="relative flex items-center justify-center">
+          {statusInfo.animate && (
+            <span
+              className={clsx(
+                'absolute inline-flex h-3 w-3 rounded-full opacity-75 animate-ping',
+                statusInfo.dotColor
+              )}
+            />
+          )}
           <span
             className={clsx(
-              'absolute inline-flex h-3 w-3 rounded-full opacity-75 animate-ping',
+              'relative inline-flex h-2 w-2 rounded-full',
               statusInfo.dotColor
             )}
           />
-        )}
-        <span
-          className={clsx(
-            'relative inline-flex h-2 w-2 rounded-full',
-            statusInfo.dotColor
-          )}
-        />
+        </div>
+
+        {/* Countdown Timer */}
+        <span className={clsx('text-sm !font-light tabular-nums', statusInfo.color)} style={{ fontFamily: 'var(--font-inter), Inter, sans-serif' }}>
+          {countdown > 0 ? formatCountdown(countdown) : '00:00:00'}
+        </span>
       </div>
 
-      {/* Status Text */}
-      <span className={clsx('text-sm font-medium', statusInfo.color)}>
-        {statusInfo.text}
-      </span>
-
-      {/* Countdown Timer (for live games) */}
-      {(status === 'live' || status === 'active') && countdown > 0 && (
-        <>
-          <span className={clsx('text-sm font-light', statusInfo.color)}>•</span>
-          <span className={clsx('text-sm font-light tabular-nums', statusInfo.color)}>
-            {formatCountdown(countdown)}
-          </span>
-        </>
-      )}
+      {/* Right Line */}
+      <div className={clsx('h-0.5 w-16', statusInfo.lineColor)} />
     </div>
   );
 };
