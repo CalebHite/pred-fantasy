@@ -10,6 +10,8 @@ interface ModalProps {
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   closeOnOverlayClick?: boolean;
+  titleBold?: boolean;
+  hideTitleBorder?: boolean;
 }
 
 export const Modal = ({
@@ -19,6 +21,8 @@ export const Modal = ({
   children,
   size = 'md',
   closeOnOverlayClick = true,
+  titleBold = false,
+  hideTitleBorder = false,
 }: ModalProps) => {
   // Close on escape key
   useEffect(() => {
@@ -65,15 +69,21 @@ export const Modal = ({
       {/* Modal content */}
       <div
         className={clsx(
-          'relative bg-white rounded-lg shadow-xl w-full',
+          'relative bg-white rounded-[25px] shadow-xl w-full',
           sizeStyles[size],
           'max-h-[90vh] overflow-y-auto'
         )}
       >
         {/* Header */}
         {title && (
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+          <div className={clsx(
+            "flex items-center justify-between p-6",
+            !hideTitleBorder && "border-b border-gray-200"
+          )}>
+            <h2 className={clsx(
+              "text-xl text-gray-900",
+              titleBold ? "font-bold" : "font-semibold"
+            )}>{title}</h2>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -96,7 +106,7 @@ export const Modal = ({
         )}
 
         {/* Body */}
-        <div className="p-4">{children}</div>
+        <div className="p-6">{children}</div>
       </div>
     </div>
   );

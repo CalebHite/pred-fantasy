@@ -24,6 +24,8 @@ export function WalletModal() {
   const [nickname, setNicknameValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [nicknameError, setNicknameError] = useState(false);
+  const [walletSelectionError, setWalletSelectionError] = useState(false);
 
   // Display wallet errors
   useEffect(() => {
@@ -64,19 +66,22 @@ export function WalletModal() {
 
   const handleWalletSelect = (walletId: string) => {
     setSelectedWallet(walletId);
+    setWalletSelectionError(false);
     setError(null);
   };
 
   const handleContinue = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!selectedWallet) {
-      setError('Please select a wallet');
-      return;
-    }
+    // Validate fields and set error states
+    const hasNicknameError = !nickname.trim();
+    const hasWalletError = !selectedWallet;
 
-    if (!nickname.trim()) {
-      setError('Please enter a nickname');
+    setNicknameError(hasNicknameError);
+    setWalletSelectionError(hasWalletError);
+
+    // Don't proceed if validation fails
+    if (hasNicknameError || hasWalletError) {
       return;
     }
 
@@ -132,6 +137,8 @@ export function WalletModal() {
       onClose={handleClose}
       title={step === 'onboarding' ? 'Connect your wallet' : 'Switch Network'}
       size="md"
+      titleBold={true}
+      hideTitleBorder={true}
     >
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -141,29 +148,42 @@ export function WalletModal() {
 
       {step === 'onboarding' && (
         <form onSubmit={handleContinue} className="flex flex-col gap-6">
-          <Input
-            label=""
-            value={nickname}
-            onChange={(e) => setNicknameValue(e.target.value)}
-            placeholder="Enter nickname"
-            required
-            maxLength={20}
-            fullWidth
-            autoFocus
-            className="text-lg"
+          <div className="flex justify-center">
+            <Input
+              label=""
+              value={nickname}
+              onChange={(e) => {
+                setNicknameValue(e.target.value);
+                if (nicknameError) setNicknameError(false);
+              }}
+              placeholder="Enter nickname"
+              error={nicknameError ? ' ' : undefined}
+              required
+              maxLength={20}
+              autoFocus
+              className="text-lg h-14 w-92"
+            />
+          </div>
+
+          <WalletSelector
+            selectedWallet={selectedWallet}
+            onWalletSelect={handleWalletSelect}
+            hasError={walletSelectionError}
           />
 
-          <WalletSelector selectedWallet={selectedWallet} onWalletSelect={handleWalletSelect} />
+          <hr className="border-t border-gray-200" />
 
-          <Button
-            type="submit"
-            disabled={!selectedWallet || !nickname.trim() || isSubmitting}
-            loading={isSubmitting}
-            fullWidth
-            variant="black"
-          >
-            {isSubmitting ? 'Connecting...' : 'Continue'}
-          </Button>
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              loading={isSubmitting}
+              variant="black"
+              size="lg"
+              className="!w-[140px]"
+            >
+              {isSubmitting ? 'Connecting...' : 'Continue'}
+            </Button>
+          </div>
         </form>
       )}
 

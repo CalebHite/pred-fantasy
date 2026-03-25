@@ -9,12 +9,12 @@ interface Wallet {
   id: string;
   name: string;
   logo: string;
-  color: string;
 }
 
 interface WalletSelectorProps {
   selectedWallet?: string;
   onWalletSelect: (walletId: string) => void;
+  hasError?: boolean;
 }
 
 const AVAILABLE_WALLETS: Wallet[] = [
@@ -22,42 +22,37 @@ const AVAILABLE_WALLETS: Wallet[] = [
     id: 'gemini',
     name: 'Gemini',
     logo: '/wallet-logos/gemini.webp',
-    color: 'bg-white',
   },
   {
     id: 'metamask',
     name: 'MetaMask',
     logo: '/wallet-logos/MetaMask_Fox.svg.png',
-    color: 'bg-white',
   },
   {
     id: 'walletconnect',
     name: 'WalletConnect',
     logo: '/wallet-logos/walletconnect.png',
-    color: 'bg-white',
   },
   {
     id: 'coinbase',
     name: 'Coinbase',
     logo: '/wallet-logos/coinbasewallet.png',
-    color: 'bg-white',
   },
   {
     id: 'rainbow',
     name: 'Rainbow',
     logo: '/wallet-logos/rainbow.avif',
-    color: 'bg-white',
   },
   {
     id: 'phantom',
     name: 'Phantom',
     logo: '/wallet-logos/phantom.png',
-    color: 'bg-white',
   },
 ];
 
-export const WalletSelector = ({ selectedWallet, onWalletSelect }: WalletSelectorProps) => {
+export const WalletSelector = ({ selectedWallet, onWalletSelect, hasError }: WalletSelectorProps) => {
   const [installedWallets, setInstalledWallets] = useState<Record<string, boolean>>({});
+  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
     // Check which wallets are installed (client-side only)
@@ -66,41 +61,70 @@ export const WalletSelector = ({ selectedWallet, onWalletSelect }: WalletSelecto
       installed[wallet.id] = isWalletInstalled(wallet.id);
     });
     setInstalledWallets(installed);
+    setIsChecking(false);
   }, []);
 
-  return (
-    <div className="grid grid-cols-3 gap-4">
-      {AVAILABLE_WALLETS.map((wallet) => {
-        const isInstalled = installedWallets[wallet.id];
-        const showWarning = isInstalled === false;
-
-        return (
-          <button
+  if (isChecking) {
+    return (
+      <div className="grid grid-cols-3 gap-4">
+        {AVAILABLE_WALLETS.map((wallet) => (
+          <div
             key={wallet.id}
-            onClick={() => onWalletSelect(wallet.id)}
-            disabled={showWarning}
-            className={clsx(
-              'flex flex-col items-center gap-2 p-4 rounded-xl transition-all',
-              'border',
-              selectedWallet === wallet.id
-                ? 'border-[#25ddf9] bg-cyan-50'
-                : 'border-gray-300 bg-white hover:border-gray-400',
-              'focus:outline-none focus:ring-1 focus:ring-[#25ddf9]',
-              showWarning && 'opacity-50 cursor-not-allowed'
-            )}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-300 bg-white animate-pulse"
           >
-            <div className="w-20 h-20 flex items-center justify-center">
-              <Image
-                src={wallet.logo}
-                alt={wallet.name}
-                width={80}
-                height={80}
-                className="object-contain"
-              />
+            <div className="w-20 h-20 bg-gray-200 rounded" />
+            <div className="h-4 w-16 bg-gray-200 rounded" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <fieldset className={clsx(
+      'border-2 rounded-xl p-4',
+      hasError ? 'border-red-500' : 'border-transparent'
+    )}>
+      <legend className="sr-only">Select a wallet provider</legend>
+      <div className="grid grid-cols-3 gap-4" role="radiogroup">
+        {AVAILABLE_WALLETS.map((wallet) => {
+          const isInstalled = installedWallets[wallet.id];
+          const showWarning = isInstalled === false;
+
+          return (
+            <div key={wallet.id} className="relative">
+              {showWarning && (
+                <span id={`${wallet.id}-warning`} className="sr-only">
+                  Not installed
+                </span>
+              )}
+              <button
+                onClick={() => onWalletSelect(wallet.id)}
+                disabled={showWarning}
+                aria-label={`Select ${wallet.name} wallet`}
+                aria-checked={selectedWallet === wallet.id}
+                aria-describedby={showWarning ? `${wallet.id}-warning` : undefined}
+                role="radio"
+                className={clsx(
+                  'flex flex-col items-center p-4 rounded-xl transition-all w-full',
+                  'focus:outline-none',
+                  selectedWallet === wallet.id ? 'opacity-100' : 'opacity-50',
+                  showWarning && 'cursor-not-allowed'
+                )}
+              >
+                <div className="w-20 h-20 flex items-center justify-center relative">
+                  <Image
+                    src={wallet.logo}
+                    alt=""
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+              </button>
             </div>
-          </button>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 };
