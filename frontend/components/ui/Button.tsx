@@ -47,6 +47,8 @@ export const Button = ({
         className
       )}
       disabled={disabled || loading}
+      aria-busy={loading}
+      aria-disabled={disabled || loading}
       {...props}
     >
       {loading && (
@@ -55,6 +57,8 @@ export const Button = ({
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"
+          role="status"
+          aria-label="Loading"
         >
           <circle
             className="opacity-25"
