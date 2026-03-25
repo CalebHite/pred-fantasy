@@ -9,7 +9,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useGame } from '@/contexts/GameContext';
 import { useUI } from '@/contexts/UIContext';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
-import { getCategoryById } from '@/data/mock-categories';
+import { Game } from '@/types';
 
 interface PageProps {
   params: Promise<{ gameCode: string }>;
@@ -19,14 +19,54 @@ export default function JoinGamePage({ params }: PageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
   const { wallet } = useWallet();
-  const { games, joinGame, isLoading } = useGame();
+  const { joinGame, isLoading } = useGame();
   const { showNotification, openModal } = useUI();
-  const [game, setGame] = useState(games.find((g) => g.code === resolvedParams.gameCode));
+  const [game, setGame] = useState<Game | null>(null);
+  const [loadingGame, setLoadingGame] = useState(true);
 
+  // Fetch the game by code from the API via the context
   useEffect(() => {
-    const foundGame = games.find((g) => g.code === resolvedParams.gameCode);
-    setGame(foundGame);
-  }, [games, resolvedParams.gameCode]);
+    let cancelled = false;
+    setLoadingGame(true);
+
+    // Use the joinGame flow — first fetch games to find by code
+    import('@/lib/api/client').then(({ fetchGames }) => {
+      fetchGames().then((apiGames) => {
+        if (cancelled) return;
+        const match = apiGames.find((g) => g.code === resolvedParams.gameCode.toUpperCase());
+        if (match) {
+          // Convert to Game shape
+          setGame({
+            id: match.id,
+            code: match.code,
+            host: match.hostAddress,
+            config: {
+              buyInAmount: match.buyInAmount,
+              categories: match.events.map((e) => e.eventTicker),
+              maxParticipants: match.maxParticipants ?? undefined,
+              resolutionTime: new Date(match.resolutionTime),
+              rules: match.rules ?? undefined,
+            },
+            participants: match.participants.map((p) => ({
+              address: p.walletAddress,
+              nickname: p.nickname,
+              joinedAt: new Date(p.joinedAt),
+              hasPaid: p.hasPaid,
+            })),
+            status: match.status as Game['status'],
+            createdAt: new Date(match.createdAt),
+            startedAt: match.startedAt ? new Date(match.startedAt) : undefined,
+            resolvedAt: match.resolvedAt ? new Date(match.resolvedAt) : undefined,
+          });
+        }
+        setLoadingGame(false);
+      }).catch(() => {
+        if (!cancelled) setLoadingGame(false);
+      });
+    });
+
+    return () => { cancelled = true; };
+  }, [resolvedParams.gameCode]);
 
   useEffect(() => {
     if (!wallet?.isConnected) {
@@ -36,24 +76,14 @@ export default function JoinGamePage({ params }: PageProps) {
 
   const handleJoinGame = async () => {
     if (!wallet?.isConnected) {
-      showNotification({
-        message: 'Please connect your wallet first',
-        type: 'error',
-      });
+      showNotification({ message: 'Please connect your wallet first', type: 'error' });
       return;
     }
 
     try {
-      await joinGame(resolvedParams.gameCode);
-      showNotification({
-        message: 'Successfully joined the game!',
-        type: 'success',
-      });
-
-      const joinedGame = games.find((g) => g.code === resolvedParams.gameCode);
-      if (joinedGame) {
-        router.push(`/game/${joinedGame.id}`);
-      }
+      const joined = await joinGame(resolvedParams.gameCode);
+      showNotification({ message: 'Successfully joined the game!', type: 'success' });
+      router.push(`/game/${joined.id}`);
     } catch (error) {
       showNotification({
         message: error instanceof Error ? error.message : 'Failed to join game',
@@ -62,11 +92,19 @@ export default function JoinGamePage({ params }: PageProps) {
     }
   };
 
+  if (loadingGame) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
   if (!game) {
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <Card padding="lg" className="text-center">
-          <div className="text-6xl mb-4">❌</div>
+          <div className="text-6xl mb-4">&#x274C;</div>
           <h1 className="text-2xl font-bold mb-2">Game Not Found</h1>
           <p className="text-gray-600 mb-6">
             The game code <span className="font-mono font-bold">{resolvedParams.gameCode}</span> does not exist or is no longer available.
@@ -83,7 +121,7 @@ export default function JoinGamePage({ params }: PageProps) {
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <Card padding="lg">
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">🎲</div>
+          <div className="text-5xl mb-3">&#x1F3B2;</div>
           <h1 className="text-2xl font-bold mb-2">Join Game</h1>
           <p className="text-gray-600">
             Game Code: <span className="font-mono font-bold text-blue-600">{game.code}</span>
@@ -110,19 +148,16 @@ export default function JoinGamePage({ params }: PageProps) {
           </div>
 
           <div className="py-3 border-b">
-            <div className="text-gray-600 mb-2">Categories ({game.config.categories.length})</div>
+            <div className="text-gray-600 mb-2">Markets ({game.config.categories.length})</div>
             <div className="flex flex-wrap gap-2">
-              {game.config.categories.map((catId) => {
-                const category = getCategoryById(catId);
-                return (
-                  <span
-                    key={catId}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
-                  >
-                    {category?.icon} {category?.name}
-                  </span>
-                );
-              })}
+              {game.config.categories.map((ticker) => (
+                <span
+                  key={ticker}
+                  className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
+                >
+                  {ticker}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -138,7 +173,7 @@ export default function JoinGamePage({ params }: PageProps) {
           <div className="space-y-4">
             <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm text-green-700 text-center">
-                ✓ You&apos;ve already joined this game
+                &#x2713; You&apos;ve already joined this game
               </p>
             </div>
             <Button fullWidth onClick={() => router.push(`/game/${game.id}`)}>

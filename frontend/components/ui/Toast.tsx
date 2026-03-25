@@ -95,7 +95,7 @@ export const Toast = ({ id, message, type = 'info', duration = 3000, onClose }: 
 };
 
 // Toast Container Component
-export const ToastContainer = ({ toasts, onClose }: { toasts: ToastProps[]; onClose: (id: string) => void }) => {
+export const ToastContainer = ({ toasts, onClose }: { toasts: Omit<ToastProps, 'onClose'>[]; onClose: (id: string) => void }) => {
   if (toasts.length === 0) return null;
 
   return (

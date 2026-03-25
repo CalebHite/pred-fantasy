@@ -12,10 +12,8 @@ import { UserBets, UserBet } from '@/components/game/UserBets';
 import { useWallet } from '@/contexts/WalletContext';
 import { useGame } from '@/contexts/GameContext';
 import { useUI } from '@/contexts/UIContext';
-import { getStrikesForCategory, MOCK_STRIKES } from '@/data/mock-strikes';
-import { MOCK_ODDS_HISTORY, MOCK_ODDS_USERS } from '@/data/mock-odds';
-import { MOCK_SCOREBOARD } from '@/data/mock-scores';
-import clsx from 'clsx';
+import { formatCurrency } from '@/lib/utils/format';
+import { submitPredictions, startGame as apiStartGame } from '@/lib/api/client';
 
 interface PageProps {
   params: Promise<{ gameId: string }>;
@@ -25,7 +23,7 @@ export default function GamePage({ params }: PageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
   const { wallet } = useWallet();
-  const { currentGame, loadGame } = useGame();
+  const { loadGame, currentGame } = useGame();
   const { openModal, showNotification } = useUI();
   const [view, setView] = useState<'predictions' | 'live'>('predictions');
   const [leftPanelView, setLeftPanelView] = useState<'bets' | 'markets'>('bets');
@@ -66,7 +64,7 @@ export default function GamePage({ params }: PageProps) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <Card padding="lg" className="text-center">
-          <div className="text-6xl mb-4">❌</div>
+          <div className="text-6xl mb-4">&#x274C;</div>
           <h1 className="text-2xl font-bold mb-2">Game Not Found</h1>
           <p className="text-gray-600 mb-6">
             This game does not exist or you don&apos;t have access to it.
@@ -80,22 +78,38 @@ export default function GamePage({ params }: PageProps) {
   const isHost = wallet?.address === currentGame.host;
   const isParticipant = currentGame.participants.some((p) => p.address === wallet?.address);
 
-  // Get market data for predictions
-  const markets = currentGame.config.categories
-    .map((catId) => {
-      const strikes = getStrikesForCategory(catId);
-      if (!strikes) return null;
-      return MOCK_STRIKES[catId];
-    })
-    .filter((m): m is NonNullable<typeof m> => m !== null);
+  const handleSubmitPredictions = async (
+    predictions: { eventTicker: string; contractTicker: string; outcome: string }[]
+  ) => {
+    if (!wallet) return;
 
-  const handlePredictionsComplete = (predictions: Record<string, string>) => {
-    showNotification({
-      message: 'Predictions submitted successfully!',
-      type: 'success',
-    });
-    setView('live');
-    // TODO: Save predictions to backend/context
+    try {
+      await submitPredictions(currentGame.id, {
+        walletAddress: wallet.address,
+        picks: predictions,
+      });
+      showNotification({ message: 'Predictions submitted successfully!', type: 'success' });
+      setShowPredictions(false);
+    } catch (error) {
+      showNotification({
+        message: error instanceof Error ? error.message : 'Failed to submit predictions',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleStartGame = async () => {
+    if (!wallet) return;
+    try {
+      await apiStartGame(currentGame.id, wallet.address);
+      showNotification({ message: 'Game started! Orders are being placed.', type: 'success' });
+      loadGame(currentGame.id); // refresh
+    } catch (error) {
+      showNotification({
+        message: error instanceof Error ? error.message : 'Failed to start game',
+        type: 'error',
+      });
+    }
   };
 
   const handleStartPredictions = () => {
@@ -116,130 +130,89 @@ export default function GamePage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
-      {/* Top Bar - Status and Actions */}
-      <div className="bg-white border-b border-gray-200 sticky top-20 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            {/* Left: Settings/Share Icons */}
-            <div className="flex items-center gap-3">
-              <button
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Settings"
-              >
-                <svg
-                  className="w-5 h-5 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-              </button>
-              <button
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Share"
-              >
-                <svg
-                  className="w-5 h-5 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {/* Center: Game Status */}
-            <GameStatusIndicator
-              status={currentGame.status}
-              timeRemaining={timeRemaining > 0 ? timeRemaining : undefined}
-            />
-
-            {/* Right: Actions */}
-            <div className="flex items-center gap-2">
-              <Button variant="outline-black" size="md" onClick={handleStartPredictions}>
-                Edit Predictions
-              </Button>
-            </div>
-          </div>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {isHost ? 'Your Game' : 'Game'}
+          </h1>
+          <span className={`px-4 py-2 rounded-full text-sm font-medium ${
+            currentGame.status === 'active' ? 'bg-green-100 text-green-700' :
+            currentGame.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+            currentGame.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+            'bg-gray-100 text-gray-700'
+          }`}>
+            {currentGame.status}
+          </span>
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Panel - Bets/Markets Toggle */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-t-2xl p-2 flex gap-2">
-              <button
-                onClick={() => setLeftPanelView('bets')}
-                className={clsx(
-                  'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  leftPanelView === 'bets'
-                    ? 'bg-black text-white'
-                    : 'bg-transparent text-gray-600 hover:bg-gray-100'
-                )}
-              >
-                Your Bets
-              </button>
-              <button
-                onClick={() => setLeftPanelView('markets')}
-                className={clsx(
-                  'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  leftPanelView === 'markets'
-                    ? 'bg-black text-white'
-                    : 'bg-transparent text-gray-600 hover:bg-gray-100'
-                )}
-              >
-                All Markets
-              </button>
-            </div>
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Timer */}
+          <Card padding="lg">
+            <GameTimer resolutionTime={currentGame.config.resolutionTime} />
+          </Card>
 
-            <div className="mt-0">
-              {leftPanelView === 'bets' ? (
-                <UserBets bets={userBets} />
-              ) : (
-                <div className="bg-white rounded-2xl shadow-sm p-6">
-                  <h3 className="text-xl font-medium text-black mb-4">All Markets</h3>
-                  <div className="space-y-2">
-                    {currentGame.config.categories.map((catId) => {
-                      const market = MOCK_STRIKES[catId];
-                      if (!market) return null;
-                      return (
-                        <div
-                          key={catId}
-                          className="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-                        >
-                          <p className="text-sm font-medium text-gray-900">
-                            {market.categoryName}
-                          </p>
-                          <p className="text-xs font-light text-gray-500 mt-1">
-                            {market.strikes.length} options
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
+          {/* Pot Info */}
+          <Card padding="lg">
+            <h3 className="text-lg font-semibold mb-4">Prize Pool</h3>
+            <div className="text-center py-6 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg">
+              <div className="text-4xl mb-2">&#x1F4B0;</div>
+              <div className="text-3xl font-bold text-amber-900">
+                {formatCurrency(totalPot)}
+              </div>
+              <p className="text-sm text-amber-700 mt-2">Winner takes all!</p>
+            </div>
+          </Card>
+
+          {/* Events in this game */}
+          <Card padding="lg">
+            <h3 className="text-lg font-semibold mb-4">
+              Prediction Markets ({currentGame.config.categories.length})
+            </h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {currentGame.config.categories.map((ticker) => (
+                <div
+                  key={ticker}
+                  className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">{ticker}</div>
                 </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Rules */}
+          {currentGame.config.rules && (
+            <Card padding="lg">
+              <h3 className="text-lg font-semibold mb-2">Rules</h3>
+              <p className="text-gray-700">{currentGame.config.rules}</p>
+            </Card>
+          )}
+
+          {/* Predictions Section */}
+          {showPredictions && (
+            <div>
+              <div className="mb-4">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Make Your Predictions</h2>
+                <p className="text-gray-600">
+                  Select one contract for each market. You can change your predictions before the game starts.
+                </p>
+              </div>
+              {!isParticipant && (
+                <Card padding="lg" className="mb-4 bg-amber-50 border-amber-200">
+                  <p className="text-sm text-amber-800">
+                    You are viewing this game but haven&apos;t joined yet. Join the game to submit predictions.
+                  </p>
+                </Card>
               )}
+              <PredictionSelector
+                eventTickers={currentGame.config.categories}
+                onSubmit={handleSubmitPredictions}
+              />
             </div>
           </div>
 
@@ -249,12 +222,44 @@ export default function GamePage({ params }: PageProps) {
               participants={MOCK_SCOREBOARD}
               currentUserId={wallet?.address ? 'user-1' : undefined}
             />
-          </div>
-        </div>
+          )}
 
-        {/* Live Odds Chart - Below Main Content */}
-        <div className="mt-8">
-          <LiveOddsChart data={MOCK_ODDS_HISTORY} users={MOCK_ODDS_USERS} />
+          {/* Participants */}
+          <ParticipantsList
+            participants={currentGame.participants}
+            hostAddress={currentGame.host}
+          />
+
+          {/* Actions */}
+          <Card padding="lg">
+            <div className="space-y-3">
+              {!isParticipant && (
+                <p className="text-sm text-amber-600 mb-3">
+                  You are viewing this game but haven&apos;t joined yet
+                </p>
+              )}
+
+              {currentGame.status === 'pending' && isParticipant && (
+                <Button
+                  fullWidth
+                  onClick={() => setShowPredictions(!showPredictions)}
+                  variant={showPredictions ? 'secondary' : 'primary'}
+                >
+                  {showPredictions ? 'Hide Predictions' : 'Make Predictions'}
+                </Button>
+              )}
+
+              {isHost && currentGame.status === 'pending' && (
+                <Button
+                  fullWidth
+                  variant="secondary"
+                  onClick={handleStartGame}
+                >
+                  Start Game &amp; Place Orders
+                </Button>
+              )}
+            </div>
+          </Card>
         </div>
       </div>
     </div>
