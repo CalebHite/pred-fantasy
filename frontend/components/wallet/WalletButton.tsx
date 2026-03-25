@@ -30,7 +30,7 @@ export function WalletButton() {
 
   if (!wallet || !wallet.isConnected) {
     return (
-      <Button onClick={handleConnect} size="sm">
+      <Button onClick={handleConnect} variant="outline-ghost" size="md">
         Connect Wallet
       </Button>
     );

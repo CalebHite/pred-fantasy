@@ -5,6 +5,7 @@ export interface Wallet {
   isConnected: boolean;
   nickname?: string;
   balance?: number;
+  chainId?: number; // Network chain ID (e.g., 137 for Polygon)
 }
 
 export interface WalletConnectionState {
@@ -12,3 +13,6 @@ export interface WalletConnectionState {
   isConnecting: boolean;
   error: string | null;
 }
+
+// Supported wallet providers
+export type SupportedWalletId = 'metamask' | 'coinbase' | 'rainbow' | 'walletconnect' | 'trust' | 'phantom';

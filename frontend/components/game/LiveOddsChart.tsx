@@ -26,10 +26,10 @@ export const LiveOddsChart = ({ data, users, className }: LiveOddsChartProps) =>
     time: formatRelativeTime(point.timestamp),
     ...Object.keys(point).reduce((acc, key) => {
       if (key !== 'timestamp') {
-        acc[key] = point[key];
+        acc[key] = point[key as keyof OddsDataPoint];
       }
       return acc;
-    }, {} as Record<string, number>),
+    }, {} as Record<string, number | Date>),
   }));
 
   // Custom tooltip

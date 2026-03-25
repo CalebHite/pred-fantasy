@@ -58,7 +58,7 @@ export const Modal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Overlay */}
       <div
-        className="absolute inset-0 bg-black bg-opacity-50 transition-opacity"
+        className="absolute inset-0 bg-black/30 backdrop-blur-md transition-opacity"
         onClick={closeOnOverlayClick ? onClose : undefined}
       />
 

@@ -22,10 +22,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           className={clsx(
             'px-3 py-2 border rounded-[10px]',
-            'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent',
+            'focus:outline-none focus:ring-1 focus:ring-[#25ddf9] focus:border-[#25ddf9]',
             'disabled:bg-gray-100 disabled:cursor-not-allowed',
             error
-              ? 'border-red-500 focus:ring-red-500'
+              ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
               : 'border-gray-300',
             className
           )}

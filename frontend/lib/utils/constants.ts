@@ -19,7 +19,8 @@ export const MAX_CATEGORIES_ALLOWED = 10;
 
 // LocalStorage keys
 export const STORAGE_KEYS = {
-  WALLET: 'pred-fantasy-wallet',
+  WALLET: 'pred-fantasy-wallet', // Deprecated, kept for migration
+  WALLET_NICKNAME: 'pred-fantasy-wallet-nickname',
   GAMES: 'pred-fantasy-games',
   CURRENT_GAME: 'pred-fantasy-current-game',
 } as const;
