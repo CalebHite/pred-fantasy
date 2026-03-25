@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { settleGame } from '@/lib/services/settlement.service';
+import { settleGame } from '../../../../../../../backend/services/settlement.service';
 
 export async function POST(
   _request: Request,

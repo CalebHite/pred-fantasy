@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getPositions } from '@/lib/gemini/positions';
-import { GeminiApiError, isGeminiConfigured } from '@/lib/gemini/client';
+import { getPositions } from '../../../../../backend/services/gemini/positions';
+import { GeminiApiError, isGeminiConfigured } from '../../../../../backend/services/gemini/client';
 
 export async function GET() {
   try {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { submitPredictions, getGamePredictions } from '@/lib/services/game.service';
+import { submitPredictions, getGamePredictions } from '../../../../../../../backend/services/game.service';
 
 export async function GET(
   request: NextRequest,

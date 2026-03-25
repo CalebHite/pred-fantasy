@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getGameById } from '@/lib/services/game.service';
+import { getGameById } from '../../../../../../backend/services/game.service';
 
 export async function GET(
   _request: Request,

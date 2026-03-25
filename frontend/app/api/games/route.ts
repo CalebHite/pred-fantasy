@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createGame, listGames } from '@/lib/services/game.service';
+import { createGame, listGames } from '../../../../../backend/services/game.service';
 
 export async function GET(request: NextRequest) {
   try {

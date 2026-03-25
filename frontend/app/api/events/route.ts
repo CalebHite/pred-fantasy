@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listEvents } from '@/lib/gemini/markets';
-import { GeminiApiError } from '@/lib/gemini/client';
+import { listEvents } from '../../../../../backend/services/gemini/markets';
+import { GeminiApiError } from '../../../../../backend/services/gemini/client';
 
 export async function GET(request: NextRequest) {
   try {

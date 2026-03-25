@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { startGameAndPlaceOrders } from '@/lib/services/order.service';
+import { startGameAndPlaceOrders } from '../../../../../../../backend/services/order.service';
 
 export async function POST(
   request: NextRequest,

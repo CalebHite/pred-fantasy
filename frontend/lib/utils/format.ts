@@ -18,10 +18,18 @@ export const formatRelativeTime = (date: Date | string): string => {
 
 /**
  * Format a wallet address for display (shortened)
+ * Shows first 9 characters followed by "..."
  */
-export const formatAddress = (address: string): string => {
+export const formatAddress = (address: string, short = false): string => {
   if (address.length < 12) return address;
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+
+  // Short format: 0x + first 6 chars + ... + last 4
+  if (short) {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
+
+  // Long format (for user profile): 0x + first 7 chars + ...
+  return `${address.slice(0, 9)}...`;
 };
 
 /**

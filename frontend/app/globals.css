@@ -8,8 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -21,8 +20,50 @@
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: #000000;
+  font-family: var(--font-inter), "Inter", sans-serif;
+  font-optical-sizing: auto;
+}
+
+/* Default text color */
+h1, h2, h3, h4, h5, h6, p, span, div, label, button {
+  color: #000000;
+}
+
+/* Allow gray text classes */
+.text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.text-gray-600 {
+  color: #4b5563 !important;
+}
+
+/* White text on dark backgrounds */
+.text-white {
+  color: #ffffff !important;
+}
+
+/* Typography - Font Weights */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 500; /* Medium */
+}
+
+p, span, div, label {
+  font-weight: 300; /* Light */
+}
+
+/* Override for specific UI elements that need different weights */
+input, select, textarea {
+  font-weight: 400; /* Regular for form elements */
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.font-light {
+  font-weight: 300;
 }
 
 @keyframes slide-in-right {
