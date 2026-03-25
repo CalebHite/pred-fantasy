@@ -23,6 +23,7 @@ export const CategoryIconButton = ({
 
   return (
     <button
+      type="button"
       className={clsx(
         'flex flex-col items-center gap-3 p-4 rounded-2xl transition-all duration-200',
         'border-2',

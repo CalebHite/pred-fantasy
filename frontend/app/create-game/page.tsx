@@ -109,10 +109,12 @@ export default function CreateGamePage() {
     e.preventDefault();
 
     if (!validateForm()) {
-      showNotification({
-        message: 'Please fix the errors before creating the game',
-        type: 'error',
-      });
+      if (selectedCategories.length < MIN_CATEGORIES_REQUIRED) {
+        showNotification({
+          message: `Please select at least ${MIN_CATEGORIES_REQUIRED} categories`,
+          type: 'error',
+        });
+      }
       return;
     }
 
@@ -148,26 +150,15 @@ export default function CreateGamePage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] p-4 sm:p-8 lg:p-12 bg-gray-50">
+    <div className="min-h-[calc(100vh-5rem)] p-4 sm:p-8 lg:p-12 pt-16 bg-white">
       <div className="max-w-6xl mx-auto">
-        {/* Logo */}
-        <div className="mb-8">
-          <Image
-            src="/icons/swords.svg"
-            alt="Predictions Versus"
-            width={40}
-            height={40}
-            className="w-10 h-10"
-          />
-        </div>
-
         {/* Title */}
         <h1 className="text-4xl font-medium text-gray-900 mb-12">Create a new game</h1>
 
-        <form onSubmit={handleSubmit}>
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
-            {/* Left Column - Form Fields */}
-            <div className="space-y-6">
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="space-y-6">
+            <div className="w-1/2 relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-gray-900 z-10">$</span>
               <Input
                 label=""
                 type="number"
@@ -175,12 +166,12 @@ export default function CreateGamePage() {
                 min="1"
                 value={buyInAmount}
                 onChange={(e) => setBuyInAmount(e.target.value)}
-                error={errors.buyInAmount}
-                placeholder="$ Buy-in amount"
-                required
+                error={errors.buyInAmount ? ' ' : undefined}
+                placeholder="Buy-in amount"
                 fullWidth
-                className="text-lg"
+                className="text-lg h-16 pl-8"
               />
+            </div>
 
               <div className="relative">
                 <Input
@@ -290,18 +281,43 @@ export default function CreateGamePage() {
               </div>
             </div>
 
-            {/* Right Column - Continue Button */}
-            <div className="lg:flex lg:items-start lg:justify-end">
+            {/* Continue Button */}
+            <div className="w-1/2 flex justify-end">
               <Button
                 type="submit"
                 loading={isLoading}
                 disabled={isLoading || selectedEvents.length < MIN_CATEGORIES_REQUIRED}
                 variant="black"
                 size="lg"
-                className="w-full lg:w-auto"
+                className="!w-[140px]"
               >
                 Continue
               </Button>
+            </div>
+
+            {/* Categories Section */}
+            <div className="pt-8">
+              <h2 className="text-xl !font-bold text-gray-900 mb-6">Categories</h2>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {categories.map((category) => (
+                  <CategoryIconButton
+                    key={category.id}
+                    icon={category.icon}
+                    label={category.name}
+                    selected={selectedCategories.includes(category.id)}
+                    onClick={() => handleCategoryToggle(category.id)}
+                    disabled={
+                      !selectedCategories.includes(category.id) &&
+                      selectedCategories.length >= MAX_CATEGORIES_ALLOWED
+                    }
+                  />
+                ))}
+              </div>
+
+              <p className="mt-4 text-sm font-light text-gray-600">
+                Select {MIN_CATEGORIES_REQUIRED}-{MAX_CATEGORIES_ALLOWED} categories.
+              </p>
             </div>
           </div>
         </form>

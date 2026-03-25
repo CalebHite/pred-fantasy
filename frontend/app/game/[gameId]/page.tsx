@@ -4,10 +4,11 @@ import { useEffect, use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { GameTimer } from '@/components/game/GameTimer';
-import { ParticipantsList } from '@/components/game/ParticipantsList';
-import { GameCodeDisplay } from '@/components/game/GameCodeDisplay';
-import { PredictionSelector } from '@/components/predictions/PredictionSelector';
+import { PredictionWizard } from '@/components/predictions/PredictionWizard';
+import { GameStatusIndicator } from '@/components/game/GameStatusIndicator';
+import { LiveOddsChart } from '@/components/game/LiveOddsChart';
+import { Scoreboard } from '@/components/game/Scoreboard';
+import { UserBets, UserBet } from '@/components/game/UserBets';
 import { useWallet } from '@/contexts/WalletContext';
 import { useGame } from '@/contexts/GameContext';
 import { useUI } from '@/contexts/UIContext';
@@ -24,7 +25,30 @@ export default function GamePage({ params }: PageProps) {
   const { wallet } = useWallet();
   const { loadGame, currentGame } = useGame();
   const { openModal, showNotification } = useUI();
-  const [showPredictions, setShowPredictions] = useState(false);
+  const [view, setView] = useState<'predictions' | 'live'>('predictions');
+  const [leftPanelView, setLeftPanelView] = useState<'bets' | 'markets'>('bets');
+
+  // Mock user bets data
+  const [userBets, setUserBets] = useState<UserBet[]>([
+    {
+      id: '1',
+      categoryId: 'nfl-superbowl',
+      categoryName: 'NFL Super Bowl Winner',
+      selectedOption: 'Kansas City Chiefs',
+      initialOdds: '+350',
+      currentOdds: '+300',
+      status: 'winning',
+    },
+    {
+      id: '2',
+      categoryId: 'btc-100k',
+      categoryName: 'Bitcoin $100K',
+      selectedOption: 'Yes, by Q2 2026',
+      initialOdds: '+150',
+      currentOdds: '+180',
+      status: 'pending',
+    },
+  ]);
 
   useEffect(() => {
     loadGame(resolvedParams.gameId);
@@ -53,7 +77,6 @@ export default function GamePage({ params }: PageProps) {
 
   const isHost = wallet?.address === currentGame.host;
   const isParticipant = currentGame.participants.some((p) => p.address === wallet?.address);
-  const totalPot = currentGame.config.buyInAmount * currentGame.participants.length;
 
   const handleSubmitPredictions = async (
     predictions: { eventTicker: string; contractTicker: string; outcome: string }[]
@@ -89,6 +112,23 @@ export default function GamePage({ params }: PageProps) {
     }
   };
 
+  const handleStartPredictions = () => {
+    setView('predictions');
+  };
+
+  // Calculate time remaining (mock)
+  const timeRemaining = Math.floor(
+    (new Date(currentGame.config.resolutionTime).getTime() - new Date().getTime()) / 1000
+  );
+
+  if (view === 'predictions') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <PredictionWizard markets={markets} onComplete={handlePredictionsComplete} />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
@@ -106,9 +146,6 @@ export default function GamePage({ params }: PageProps) {
             {currentGame.status}
           </span>
         </div>
-        <p className="text-gray-600">
-          Track your predictions and compete with other players
-        </p>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -177,16 +214,13 @@ export default function GamePage({ params }: PageProps) {
                 onSubmit={handleSubmitPredictions}
               />
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Game Code */}
-          {isHost && (
-            <GameCodeDisplay
-              gameCode={currentGame.code}
-              gameId={currentGame.id}
+          {/* Right Panel - Scoreboard */}
+          <div className="lg:col-span-2">
+            <Scoreboard
+              participants={MOCK_SCOREBOARD}
+              currentUserId={wallet?.address ? 'user-1' : undefined}
             />
           )}
 
