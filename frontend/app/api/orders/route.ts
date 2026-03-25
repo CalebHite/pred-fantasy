@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGameOrders } from '../../../../../backend/services/order.service';
+import { getGameOrders } from '../../../../backend/services/order.service';
 
 export async function GET(request: NextRequest) {
   try {
