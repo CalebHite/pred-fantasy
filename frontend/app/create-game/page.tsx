@@ -30,8 +30,20 @@ export default function CreateGamePage() {
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const [events, setEvents] = useState<ApiGeminiEvent[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
+  // Mock markets for testing
+  const mockMarkets: ApiGeminiEvent[] = [
+    { id: '1', ticker: 'BTC100K', title: 'Bitcoin to reach $100K by end of 2026', slug: 'btc-100k', description: '', imageUrl: '/icons/Bitcoin (BTC).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
+    { id: '2', ticker: 'ETH10K', title: 'Ethereum to reach $10K by Q3 2026', slug: 'eth-10k', description: '', imageUrl: '/icons/Ether (ETH).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
+    { id: '3', ticker: 'SUPERBOWL', title: 'NFL Super Bowl LXI Winner', slug: 'superbowl', description: '', imageUrl: '/icons/nfl.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
+    { id: '4', ticker: 'NBA', title: 'NBA Championship Winner 2026', slug: 'nba', description: '', imageUrl: '/icons/nba.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
+    { id: '5', ticker: 'EPL', title: 'English Premier League Winner', slug: 'epl', description: '', imageUrl: '/icons/epl.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
+    { id: '6', ticker: 'TENNIS', title: 'Wimbledon Champion 2026', slug: 'tennis', description: '', imageUrl: '/icons/tennis.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
+    { id: '7', ticker: 'SOL', title: 'Solana Price Prediction', slug: 'sol', description: '', imageUrl: '/icons/Solana (SOL).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
+    { id: '8', ticker: 'XRP', title: 'XRP Price Prediction', slug: 'xrp', description: '', imageUrl: '/icons/XRP (XRP).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
+  ];
+
+  const [events, setEvents] = useState<ApiGeminiEvent[]>(mockMarkets);
+  const [eventsLoading, setEventsLoading] = useState(false);
 
   // Fetch live events from Gemini
   useEffect(() => {
@@ -39,11 +51,17 @@ export default function CreateGamePage() {
     setEventsLoading(true);
     fetchEvents({ status: ['active'], limit: 50 })
       .then((res) => {
-        if (!cancelled) setEvents(res.data);
+        if (!cancelled) {
+          // If API returns data, use it; otherwise keep mock data
+          if (res.data && res.data.length > 0) {
+            setEvents(res.data);
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) {
-          showNotification({ message: 'Failed to load prediction markets', type: 'error' });
+          // Keep mock markets on error, don't show error notification for testing
+          console.log('Using mock markets for testing');
         }
       })
       .finally(() => {
@@ -158,7 +176,7 @@ export default function CreateGamePage() {
         <form onSubmit={handleSubmit} noValidate>
           <div className="space-y-6">
             <div className="w-1/2 relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-gray-900 z-10">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg !font-bold text-gray-900 z-10">$</span>
               <Input
                 label=""
                 type="number"
@@ -173,37 +191,45 @@ export default function CreateGamePage() {
               />
             </div>
 
-              <div className="relative">
-                <Input
-                  label=""
-                  type="number"
-                  min="2"
-                  max="100"
-                  value={maxParticipants}
-                  onChange={(e) => setMaxParticipants(e.target.value)}
-                  error={errors.maxParticipants}
-                  placeholder="Max participants (optional)"
-                  fullWidth
-                  className="text-lg"
-                />
-                <Image
-                  src="/icons/arrows.svg"
-                  alt=""
-                  width={20}
-                  height={20}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none"
-                />
-              </div>
+            <div className="w-1/2 relative">
+              <Input
+                label=""
+                type="number"
+                min="2"
+                max="100"
+                value={maxParticipants}
+                onChange={(e) => setMaxParticipants(e.target.value)}
+                error={errors.maxParticipants}
+                placeholder="Max participants (optional)"
+                fullWidth
+                className="text-lg h-16"
+              />
+              <Image
+                src="/icons/arrows.svg"
+                alt=""
+                width={20}
+                height={20}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none"
+              />
+            </div>
 
-              {/* Markets Section */}
-              <div className="pt-8">
+            {/* Continue Button */}
+            <div className="w-1/2 flex justify-end">
+              <Button
+                type="submit"
+                loading={isLoading}
+                disabled={isLoading}
+                variant="black"
+                size="lg"
+                className="!w-[140px]"
+              >
+                Continue
+              </Button>
+            </div>
+
+            {/* Markets Section */}
+            <div className="pt-8">
                 <h2 className="text-2xl font-medium text-gray-900 mb-6">Prediction Markets</h2>
-
-                {errors.events && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-600">{errors.events}</p>
-                  </div>
-                )}
 
                 {eventsLoading ? (
                   <div className="flex justify-center py-12">
@@ -214,7 +240,7 @@ export default function CreateGamePage() {
                     No active prediction markets found. Check back later or verify your Gemini API config.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  <div className="flex flex-wrap gap-0">
                     {events.map((event) => {
                       const isSelected = selectedEvents.includes(event.ticker);
                       return (
@@ -227,45 +253,20 @@ export default function CreateGamePage() {
                             selectedEvents.length >= MAX_CATEGORIES_ALLOWED
                           }
                           className={clsx(
-                            'relative flex flex-col items-center gap-3 p-4 rounded-2xl transition-all duration-200',
-                            'border-2',
-                            isSelected
-                              ? 'border-blue-500 bg-blue-50'
-                              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm',
+                            'flex items-center justify-center w-16 h-16 transition-all',
+                            isSelected ? 'opacity-100' : 'opacity-40 hover:opacity-60',
                             !isSelected && selectedEvents.length >= MAX_CATEGORIES_ALLOWED
-                              ? 'opacity-50 cursor-not-allowed'
+                              ? 'opacity-20 cursor-not-allowed'
                               : 'cursor-pointer'
                           )}
                         >
-                          <div
-                            className={clsx(
-                              'w-16 h-16 rounded-full flex items-center justify-center transition-all',
-                              isSelected ? 'bg-blue-100' : 'bg-gray-100'
-                            )}
-                          >
-                            <span className="text-xs font-medium text-center px-1 leading-tight">
-                              {event.ticker}
-                            </span>
-                          </div>
-                          <span
-                            className={clsx(
-                              'text-sm font-light text-center line-clamp-2',
-                              isSelected ? 'text-blue-700' : 'text-gray-700'
-                            )}
-                          >
-                            {event.title}
-                          </span>
-                          {isSelected && (
-                            <div className="absolute top-2 right-2 bg-blue-600 rounded-full p-1">
-                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          )}
+                          <Image
+                            src={event.imageUrl}
+                            alt={event.title}
+                            width={40}
+                            height={40}
+                            className="object-contain"
+                          />
                         </button>
                       );
                     })}
@@ -279,20 +280,6 @@ export default function CreateGamePage() {
                   </span>
                 </p>
               </div>
-
-            {/* Continue Button */}
-            <div className="w-1/2 flex justify-end">
-              <Button
-                type="submit"
-                loading={isLoading}
-                disabled={isLoading || selectedEvents.length < MIN_CATEGORIES_REQUIRED}
-                variant="black"
-                size="lg"
-                className="!w-[140px]"
-              >
-                Continue
-              </Button>
-            </div>
           </div>
         </form>
       </div>
