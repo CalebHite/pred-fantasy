@@ -1,22 +1,22 @@
 'use client';
 
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { CategoryIconButton } from '@/components/ui/CategoryIconButton';
+import { Spinner } from '@/components/ui/Spinner';
 import { useWallet } from '@/contexts/WalletContext';
 import { useGame } from '@/contexts/GameContext';
 import { useUI } from '@/contexts/UIContext';
-import { getActiveCategories } from '@/data/mock-categories';
-import { GameConfig } from '@/types';
 import { MIN_CATEGORIES_REQUIRED, MAX_CATEGORIES_ALLOWED } from '@/lib/utils/constants';
 import {
   validateBuyIn,
   validateMaxParticipants,
   validateResolutionTime,
 } from '@/lib/utils/validation';
+import { fetchEvents, ApiGeminiEvent } from '@/lib/api/client';
+import clsx from 'clsx';
 
 export default function CreateGamePage() {
   const router = useRouter();
@@ -27,10 +27,30 @@ export default function CreateGamePage() {
   const [buyInAmount, setBuyInAmount] = useState('10');
   const [maxParticipants, setMaxParticipants] = useState('');
   const [resolutionDays, setResolutionDays] = useState('7');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const categories = getActiveCategories();
+  const [events, setEvents] = useState<ApiGeminiEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+
+  // Fetch live events from Gemini
+  useEffect(() => {
+    let cancelled = false;
+    setEventsLoading(true);
+    fetchEvents({ status: ['active'], limit: 50 })
+      .then((res) => {
+        if (!cancelled) setEvents(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          showNotification({ message: 'Failed to load prediction markets', type: 'error' });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setEventsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [showNotification]);
 
   // Redirect if not connected
   useEffect(() => {
@@ -40,19 +60,19 @@ export default function CreateGamePage() {
     }
   }, [wallet, router, openModal]);
 
-  const handleCategoryToggle = (categoryId: string) => {
-    setSelectedCategories((prev) => {
-      if (prev.includes(categoryId)) {
-        return prev.filter((id) => id !== categoryId);
+  const handleEventToggle = (ticker: string) => {
+    setSelectedEvents((prev) => {
+      if (prev.includes(ticker)) {
+        return prev.filter((t) => t !== ticker);
       } else if (prev.length < MAX_CATEGORIES_ALLOWED) {
-        return [...prev, categoryId];
+        return [...prev, ticker];
       }
       return prev;
     });
-    // Clear category error when user makes a selection
-    if (errors.categories) {
+    // Clear error when user makes a selection
+    if (errors.events) {
       setErrors((prev) => {
-        const { categories, ...rest } = prev;
+        const { events, ...rest } = prev;
         return rest;
       });
     }
@@ -61,11 +81,8 @@ export default function CreateGamePage() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // Validate buy-in
     const buyInValidation = validateBuyIn(parseFloat(buyInAmount));
-    if (!buyInValidation.valid) {
-      newErrors.buyInAmount = buyInValidation.error!;
-    }
+    if (!buyInValidation.valid) newErrors.buyInAmount = buyInValidation.error!;
 
     // Validate max participants (optional)
     if (maxParticipants) {
@@ -76,16 +93,12 @@ export default function CreateGamePage() {
       }
     }
 
-    // Validate resolution time
     const resolutionTime = new Date(Date.now() + parseInt(resolutionDays) * 24 * 60 * 60 * 1000);
     const resolutionValidation = validateResolutionTime(resolutionTime);
-    if (!resolutionValidation.valid) {
-      newErrors.resolutionDays = resolutionValidation.error!;
-    }
+    if (!resolutionValidation.valid) newErrors.resolutionDays = resolutionValidation.error!;
 
-    // Validate categories
-    if (selectedCategories.length < MIN_CATEGORIES_REQUIRED) {
-      newErrors.categories = `Please select at least ${MIN_CATEGORIES_REQUIRED} categories`;
+    if (selectedEvents.length < MIN_CATEGORIES_REQUIRED) {
+      newErrors.events = `Please select at least ${MIN_CATEGORIES_REQUIRED} markets`;
     }
 
     setErrors(newErrors);
@@ -104,14 +117,17 @@ export default function CreateGamePage() {
     }
 
     try {
-      const config: GameConfig = {
+      const selectedEventObjects = events.filter((ev) => selectedEvents.includes(ev.ticker));
+      const game = await createGame({
         buyInAmount: parseFloat(buyInAmount),
-        categories: selectedCategories,
         maxParticipants: maxParticipants ? parseInt(maxParticipants) : undefined,
         resolutionTime: new Date(Date.now() + parseInt(resolutionDays) * 24 * 60 * 60 * 1000),
-      };
-
-      const game = await createGame(config);
+        events: selectedEventObjects.map((ev) => ({
+          ticker: ev.ticker,
+          title: ev.title,
+          type: ev.type,
+        })),
+      });
 
       showNotification({
         message: 'Game created successfully!',
@@ -188,36 +204,87 @@ export default function CreateGamePage() {
                 />
               </div>
 
-              {/* Categories Section */}
+              {/* Markets Section */}
               <div className="pt-8">
-                <h2 className="text-2xl font-medium text-gray-900 mb-6">Categories</h2>
+                <h2 className="text-2xl font-medium text-gray-900 mb-6">Prediction Markets</h2>
 
-                {errors.categories && (
+                {errors.events && (
                   <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-600">{errors.categories}</p>
+                    <p className="text-sm text-red-600">{errors.events}</p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {categories.map((category) => (
-                    <CategoryIconButton
-                      key={category.id}
-                      icon={category.icon}
-                      label={category.name}
-                      selected={selectedCategories.includes(category.id)}
-                      onClick={() => handleCategoryToggle(category.id)}
-                      disabled={
-                        !selectedCategories.includes(category.id) &&
-                        selectedCategories.length >= MAX_CATEGORIES_ALLOWED
-                      }
-                    />
-                  ))}
-                </div>
+                {eventsLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Spinner />
+                  </div>
+                ) : events.length === 0 ? (
+                  <p className="text-center py-8 text-gray-500">
+                    No active prediction markets found. Check back later or verify your Gemini API config.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {events.map((event) => {
+                      const isSelected = selectedEvents.includes(event.ticker);
+                      return (
+                        <button
+                          key={event.ticker}
+                          type="button"
+                          onClick={() => handleEventToggle(event.ticker)}
+                          disabled={
+                            !isSelected &&
+                            selectedEvents.length >= MAX_CATEGORIES_ALLOWED
+                          }
+                          className={clsx(
+                            'relative flex flex-col items-center gap-3 p-4 rounded-2xl transition-all duration-200',
+                            'border-2',
+                            isSelected
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm',
+                            !isSelected && selectedEvents.length >= MAX_CATEGORIES_ALLOWED
+                              ? 'opacity-50 cursor-not-allowed'
+                              : 'cursor-pointer'
+                          )}
+                        >
+                          <div
+                            className={clsx(
+                              'w-16 h-16 rounded-full flex items-center justify-center transition-all',
+                              isSelected ? 'bg-blue-100' : 'bg-gray-100'
+                            )}
+                          >
+                            <span className="text-xs font-medium text-center px-1 leading-tight">
+                              {event.ticker}
+                            </span>
+                          </div>
+                          <span
+                            className={clsx(
+                              'text-sm font-light text-center line-clamp-2',
+                              isSelected ? 'text-blue-700' : 'text-gray-700'
+                            )}
+                          >
+                            {event.title}
+                          </span>
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 bg-blue-600 rounded-full p-1">
+                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <p className="mt-4 text-sm font-light text-gray-600">
-                  Select {MIN_CATEGORIES_REQUIRED}-{MAX_CATEGORIES_ALLOWED} categories.{' '}
+                  Select {MIN_CATEGORIES_REQUIRED}-{MAX_CATEGORIES_ALLOWED} markets.{' '}
                   <span className="font-normal">
-                    {selectedCategories.length} selected
+                    {selectedEvents.length} selected
                   </span>
                 </p>
               </div>
@@ -228,7 +295,7 @@ export default function CreateGamePage() {
               <Button
                 type="submit"
                 loading={isLoading}
-                disabled={isLoading || selectedCategories.length < MIN_CATEGORIES_REQUIRED}
+                disabled={isLoading || selectedEvents.length < MIN_CATEGORIES_REQUIRED}
                 variant="black"
                 size="lg"
                 className="w-full lg:w-auto"

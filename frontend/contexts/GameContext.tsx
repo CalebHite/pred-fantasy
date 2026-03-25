@@ -1,21 +1,59 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
-import { Game, GameConfig, GameCode, GameId, Participant } from '@/types';
-import { generateGameCode, generateGameId } from '@/lib/game/game-generator';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { STORAGE_KEYS } from '@/lib/utils/constants';
+import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { Game, GameCode, GameId } from '@/types';
 import { useWallet } from './WalletContext';
+import {
+  fetchGame as apiFetchGame,
+  fetchGames as apiFetchGames,
+  createGame as apiCreateGame,
+  joinGame as apiJoinGame,
+  ApiGame,
+} from '@/lib/api/client';
+
+/** Map an API game response to the frontend Game shape. */
+function toGame(g: ApiGame): Game {
+  return {
+    id: g.id,
+    code: g.code,
+    host: g.hostAddress,
+    config: {
+      buyInAmount: g.buyInAmount,
+      categories: g.events.map((e) => e.eventTicker),
+      maxParticipants: g.maxParticipants ?? undefined,
+      resolutionTime: new Date(g.resolutionTime),
+      rules: g.rules ?? undefined,
+    },
+    participants: g.participants.map((p) => ({
+      address: p.walletAddress,
+      nickname: p.nickname,
+      joinedAt: new Date(p.joinedAt),
+      hasPaid: p.hasPaid,
+    })),
+    status: g.status as Game['status'],
+    createdAt: new Date(g.createdAt),
+    startedAt: g.startedAt ? new Date(g.startedAt) : undefined,
+    resolvedAt: g.resolvedAt ? new Date(g.resolvedAt) : undefined,
+  };
+}
+
+interface CreateGameInput {
+  buyInAmount: number;
+  maxParticipants?: number;
+  resolutionTime: Date;
+  rules?: string;
+  events: { ticker: string; title: string; type: string }[];
+}
 
 interface GameContextType {
   currentGame: Game | null;
   games: Game[];
   isLoading: boolean;
-  createGame: (config: GameConfig) => Promise<Game>;
-  joinGame: (gameCode: GameCode) => Promise<void>;
+  createGame: (input: CreateGameInput) => Promise<Game>;
+  joinGame: (gameCode: GameCode) => Promise<Game>;
   leaveGame: (gameId: GameId) => Promise<void>;
-  updateGameConfig: (gameId: GameId, config: Partial<GameConfig>) => Promise<void>;
   loadGame: (gameId: GameId) => Promise<void>;
+  refreshGames: () => Promise<void>;
   setCurrentGame: (game: Game | null) => void;
 }
 
@@ -23,196 +61,99 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const { wallet } = useWallet();
-  const [games, setGames] = useLocalStorage<Game[]>(STORAGE_KEYS.GAMES, []);
-  const [currentGameId, setCurrentGameId] = useLocalStorage<string | null>(STORAGE_KEYS.CURRENT_GAME, null);
+  const [games, setGames] = useState<Game[]>([]);
   const [currentGame, setCurrentGame] = useState<Game | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load current game when currentGameId changes
-  useEffect(() => {
-    if (currentGameId) {
-      const game = games.find((g) => g.id === currentGameId);
-      setCurrentGame(game || null);
-    } else {
-      setCurrentGame(null);
+  const refreshGames = useCallback(async () => {
+    try {
+      const apiGames = await apiFetchGames();
+      setGames(apiGames.map(toGame));
+    } catch {
+      // silently fail — games list is non-critical
     }
-  }, [currentGameId, games]);
+  }, []);
 
   const createGame = useCallback(
-    async (config: GameConfig): Promise<Game> => {
-      if (!wallet) {
-        throw new Error('Wallet not connected');
-      }
+    async (input: CreateGameInput): Promise<Game> => {
+      if (!wallet) throw new Error('Wallet not connected');
 
       setIsLoading(true);
-
       try {
-        // Create new game
-        const game: Game = {
-          id: generateGameId(),
-          code: generateGameCode(),
-          host: wallet.address,
-          config,
-          participants: [
-            {
-              address: wallet.address,
-              nickname: wallet.nickname || 'Anonymous',
-              joinedAt: new Date(),
-              hasPaid: true,
-            },
-          ],
-          status: 'pending',
-          createdAt: new Date(),
-        };
+        const apiGame = await apiCreateGame({
+          hostAddress: wallet.address,
+          buyInAmount: input.buyInAmount,
+          maxParticipants: input.maxParticipants,
+          resolutionTime: input.resolutionTime.toISOString(),
+          rules: input.rules,
+          events: input.events,
+        });
 
-        // Save game
+        const game = toGame(apiGame);
         setGames((prev) => [...prev, game]);
-        setCurrentGameId(game.id);
         setCurrentGame(game);
-
         return game;
       } finally {
         setIsLoading(false);
       }
     },
-    [wallet, setGames, setCurrentGameId]
+    [wallet]
   );
 
   const joinGame = useCallback(
-    async (gameCode: GameCode): Promise<void> => {
-      if (!wallet) {
-        throw new Error('Wallet not connected');
-      }
+    async (gameCode: GameCode): Promise<Game> => {
+      if (!wallet) throw new Error('Wallet not connected');
 
       setIsLoading(true);
-
       try {
-        // Find game by code
-        const game = games.find((g) => g.code === gameCode);
-        if (!game) {
-          throw new Error('Game not found');
-        }
+        // First find the game by code so we have its ID
+        const allGames = await apiFetchGames();
+        const target = allGames.find((g) => g.code === gameCode.toUpperCase());
+        if (!target) throw new Error('Game not found');
 
-        // Check if already joined
-        if (game.participants.some((p) => p.address === wallet.address)) {
-          setCurrentGameId(game.id);
-          return;
-        }
-
-        // Check max participants
-        if (game.config.maxParticipants && game.participants.length >= game.config.maxParticipants) {
-          throw new Error('Game is full');
-        }
-
-        // Add participant
-        const participant: Participant = {
-          address: wallet.address,
+        const apiGame = await apiJoinGame(target.id, {
+          walletAddress: wallet.address,
           nickname: wallet.nickname || 'Anonymous',
-          joinedAt: new Date(),
-          hasPaid: true,
-        };
+        });
 
-        const updatedGame = {
-          ...game,
-          participants: [...game.participants, participant],
-        };
-
-        // Update games
-        setGames((prev) => prev.map((g) => (g.id === game.id ? updatedGame : g)));
-        setCurrentGameId(game.id);
-        setCurrentGame(updatedGame);
+        const game = toGame(apiGame);
+        setGames((prev) => {
+          const idx = prev.findIndex((g) => g.id === game.id);
+          return idx >= 0 ? prev.map((g) => (g.id === game.id ? game : g)) : [...prev, game];
+        });
+        setCurrentGame(game);
+        return game;
       } finally {
         setIsLoading(false);
       }
     },
-    [wallet, games, setGames, setCurrentGameId]
+    [wallet]
   );
 
   const leaveGame = useCallback(
     async (gameId: GameId): Promise<void> => {
-      if (!wallet) {
-        throw new Error('Wallet not connected');
-      }
-
-      setIsLoading(true);
-
-      try {
-        const game = games.find((g) => g.id === gameId);
-        if (!game) {
-          throw new Error('Game not found');
-        }
-
-        // Remove participant
-        const updatedGame = {
-          ...game,
-          participants: game.participants.filter((p) => p.address !== wallet.address),
-        };
-
-        setGames((prev) => prev.map((g) => (g.id === gameId ? updatedGame : g)));
-
-        if (currentGameId === gameId) {
-          setCurrentGameId(null);
-        }
-      } finally {
-        setIsLoading(false);
-      }
+      // For now, just clear local state — no leave endpoint yet
+      setCurrentGame((prev) => (prev?.id === gameId ? null : prev));
     },
-    [wallet, games, currentGameId, setGames, setCurrentGameId]
-  );
-
-  const updateGameConfig = useCallback(
-    async (gameId: GameId, config: Partial<GameConfig>): Promise<void> => {
-      if (!wallet) {
-        throw new Error('Wallet not connected');
-      }
-
-      setIsLoading(true);
-
-      try {
-        const game = games.find((g) => g.id === gameId);
-        if (!game) {
-          throw new Error('Game not found');
-        }
-
-        // Check if user is host
-        if (game.host !== wallet.address) {
-          throw new Error('Only the host can update game config');
-        }
-
-        const updatedGame = {
-          ...game,
-          config: { ...game.config, ...config },
-        };
-
-        setGames((prev) => prev.map((g) => (g.id === gameId ? updatedGame : g)));
-
-        if (currentGameId === gameId) {
-          setCurrentGame(updatedGame);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [wallet, games, currentGameId, setGames]
+    []
   );
 
   const loadGame = useCallback(
     async (gameId: GameId): Promise<void> => {
       setIsLoading(true);
-
       try {
-        const game = games.find((g) => g.id === gameId);
-        if (!game) {
-          throw new Error('Game not found');
-        }
-
-        setCurrentGameId(gameId);
+        const apiGame = await apiFetchGame(gameId);
+        const game = toGame(apiGame);
+        setGames((prev) => {
+          const idx = prev.findIndex((g) => g.id === game.id);
+          return idx >= 0 ? prev.map((g) => (g.id === game.id ? game : g)) : [...prev, game];
+        });
         setCurrentGame(game);
       } finally {
         setIsLoading(false);
       }
     },
-    [games, setCurrentGameId]
+    []
   );
 
   return (
@@ -224,8 +165,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         createGame,
         joinGame,
         leaveGame,
-        updateGameConfig,
         loadGame,
+        refreshGames,
         setCurrentGame,
       }}
     >

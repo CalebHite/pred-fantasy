@@ -12,7 +12,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useGame } from '@/contexts/GameContext';
 import { useUI } from '@/contexts/UIContext';
 import { formatCurrency } from '@/lib/utils/format';
-import { getCategoryById } from '@/data/mock-categories';
+import { submitPredictions, startGame as apiStartGame } from '@/lib/api/client';
 
 interface PageProps {
   params: Promise<{ gameId: string }>;
@@ -22,7 +22,7 @@ export default function GamePage({ params }: PageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
   const { wallet } = useWallet();
-  const { games, loadGame, currentGame } = useGame();
+  const { loadGame, currentGame } = useGame();
   const { openModal, showNotification } = useUI();
   const [showPredictions, setShowPredictions] = useState(false);
 
@@ -40,7 +40,7 @@ export default function GamePage({ params }: PageProps) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <Card padding="lg" className="text-center">
-          <div className="text-6xl mb-4">❌</div>
+          <div className="text-6xl mb-4">&#x274C;</div>
           <h1 className="text-2xl font-bold mb-2">Game Not Found</h1>
           <p className="text-gray-600 mb-6">
             This game does not exist or you don&apos;t have access to it.
@@ -55,13 +55,38 @@ export default function GamePage({ params }: PageProps) {
   const isParticipant = currentGame.participants.some((p) => p.address === wallet?.address);
   const totalPot = currentGame.config.buyInAmount * currentGame.participants.length;
 
-  const handleSubmitPredictions = (predictions: Record<string, string>) => {
-    showNotification({
-      message: 'Predictions submitted successfully!',
-      type: 'success',
-    });
-    setShowPredictions(false);
-    // TODO: Save predictions to backend/context
+  const handleSubmitPredictions = async (
+    predictions: { eventTicker: string; contractTicker: string; outcome: string }[]
+  ) => {
+    if (!wallet) return;
+
+    try {
+      await submitPredictions(currentGame.id, {
+        walletAddress: wallet.address,
+        picks: predictions,
+      });
+      showNotification({ message: 'Predictions submitted successfully!', type: 'success' });
+      setShowPredictions(false);
+    } catch (error) {
+      showNotification({
+        message: error instanceof Error ? error.message : 'Failed to submit predictions',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleStartGame = async () => {
+    if (!wallet) return;
+    try {
+      await apiStartGame(currentGame.id, wallet.address);
+      showNotification({ message: 'Game started! Orders are being placed.', type: 'success' });
+      loadGame(currentGame.id); // refresh
+    } catch (error) {
+      showNotification({
+        message: error instanceof Error ? error.message : 'Failed to start game',
+        type: 'error',
+      });
+    }
   };
 
   return (
@@ -75,6 +100,7 @@ export default function GamePage({ params }: PageProps) {
           <span className={`px-4 py-2 rounded-full text-sm font-medium ${
             currentGame.status === 'active' ? 'bg-green-100 text-green-700' :
             currentGame.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+            currentGame.status === 'completed' ? 'bg-blue-100 text-blue-700' :
             'bg-gray-100 text-gray-700'
           }`}>
             {currentGame.status}
@@ -97,45 +123,28 @@ export default function GamePage({ params }: PageProps) {
           <Card padding="lg">
             <h3 className="text-lg font-semibold mb-4">Prize Pool</h3>
             <div className="text-center py-6 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg">
-              <div className="text-4xl mb-2">💰</div>
+              <div className="text-4xl mb-2">&#x1F4B0;</div>
               <div className="text-3xl font-bold text-amber-900">
                 {formatCurrency(totalPot)}
               </div>
-              <p className="text-sm text-amber-700 mt-2">
-                Winner takes all!
-              </p>
+              <p className="text-sm text-amber-700 mt-2">Winner takes all!</p>
             </div>
           </Card>
 
-          {/* Categories */}
+          {/* Events in this game */}
           <Card padding="lg">
             <h3 className="text-lg font-semibold mb-4">
-              Prediction Categories ({currentGame.config.categories.length})
+              Prediction Markets ({currentGame.config.categories.length})
             </h3>
             <div className="grid sm:grid-cols-2 gap-3">
-              {currentGame.config.categories.map((catId) => {
-                const category = getCategoryById(catId);
-                if (!category) return null;
-
-                return (
-                  <div
-                    key={catId}
-                    className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-3xl">{category.icon}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900">
-                          {category.name}
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {category.description}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {currentGame.config.categories.map((ticker) => (
+                <div
+                  key={ticker}
+                  className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">{ticker}</div>
+                </div>
+              ))}
             </div>
           </Card>
 
@@ -153,7 +162,7 @@ export default function GamePage({ params }: PageProps) {
               <div className="mb-4">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Make Your Predictions</h2>
                 <p className="text-gray-600">
-                  Select one strike for each market. You can change your predictions before the game closes.
+                  Select one contract for each market. You can change your predictions before the game starts.
                 </p>
               </div>
               {!isParticipant && (
@@ -164,7 +173,7 @@ export default function GamePage({ params }: PageProps) {
                 </Card>
               )}
               <PredictionSelector
-                categoryIds={currentGame.config.categories}
+                eventTickers={currentGame.config.categories}
                 onSubmit={handleSubmitPredictions}
               />
             </div>
@@ -196,21 +205,23 @@ export default function GamePage({ params }: PageProps) {
                 </p>
               )}
 
-              <Button
-                fullWidth
-                onClick={() => setShowPredictions(!showPredictions)}
-                variant={showPredictions ? "secondary" : "primary"}
-              >
-                {showPredictions ? 'Hide Predictions' : 'Make Predictions'}
-              </Button>
+              {currentGame.status === 'pending' && isParticipant && (
+                <Button
+                  fullWidth
+                  onClick={() => setShowPredictions(!showPredictions)}
+                  variant={showPredictions ? 'secondary' : 'primary'}
+                >
+                  {showPredictions ? 'Hide Predictions' : 'Make Predictions'}
+                </Button>
+              )}
 
-              {isHost && (
+              {isHost && currentGame.status === 'pending' && (
                 <Button
                   fullWidth
                   variant="secondary"
-                  disabled
+                  onClick={handleStartGame}
                 >
-                  Game Settings (Coming Soon)
+                  Start Game &amp; Place Orders
                 </Button>
               )}
             </div>
