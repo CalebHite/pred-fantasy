@@ -8,6 +8,11 @@ export interface ScoreboardEntry {
   rank: number; // Current rank in the game (1 = first place)
   avatar?: string; // Optional avatar URL
   color?: string; // Optional color for visual distinction
+  avgOdds?: number; // Average contract price across picks (0-1 scale, e.g. 0.67 = 67%)
+  numPicks?: number; // Number of predictions made
+  totalCost?: number; // Sum of entry prices (cost basis)
+  totalValue?: number; // Sum of current contract prices
+  pnl?: number; // totalValue - totalCost
 }
 
 // Mock scoreboard data (sorted by rank)
