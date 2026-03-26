@@ -40,6 +40,7 @@ export const predictions = sqliteTable('predictions', {
   eventTicker: text('event_ticker').notNull(),
   contractTicker: text('contract_ticker').notNull(),
   outcome: text('outcome', { enum: ['yes', 'no'] }).notNull(),
+  entryPrice: text('entry_price'), // contract price at time of prediction (string, e.g. "0.67")
   isCorrect: integer('is_correct', { mode: 'boolean' }),
   createdAt: text('created_at').notNull(),
 });
