@@ -101,7 +101,7 @@ export const GameCodeInput = ({
   };
 
   return (
-    <div className="flex gap-3 justify-center">
+    <div className="flex gap-7 justify-start pl-[52px]">
       {values.map((value, index) => (
         <input
           key={index}
