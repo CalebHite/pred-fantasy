@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { games, gameEvents, participants, predictions, geminiOrders, payouts } from '../db/schema';
+import { games, gameEvents, gameCategories, participants, predictions, geminiOrders, payouts } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getEvent } from './gemini/markets';
 
@@ -27,15 +27,25 @@ export async function settleGame(gameId: string): Promise<SettlementResult> {
   // Mark as resolving
   db.update(games).set({ status: 'resolving' }).where(eq(games.id, gameId)).run();
 
+  const categories = db.select().from(gameCategories).where(eq(gameCategories.gameId, gameId)).all();
   const events = db.select().from(gameEvents).where(eq(gameEvents.gameId, gameId)).all();
   const gameParticipants = db.select().from(participants).where(eq(participants.gameId, gameId)).all();
   const allPredictions = db.select().from(predictions).where(eq(predictions.gameId, gameId)).all();
+
+  // For category-based games, get unique event tickers from all predictions
+  // (since different players may have picked different markets within categories)
+  const uniqueEventTickers = [...new Set(allPredictions.map(p => p.eventTicker))];
 
   const settledEvents: string[] = [];
   const unsettledEvents: string[] = [];
 
   // Check each event's resolution on Gemini
-  for (const event of events) {
+  // Use uniqueEventTickers for category-based games, or events for legacy games
+  const eventsToCheck = categories.length > 0
+    ? uniqueEventTickers.map(ticker => ({ eventTicker: ticker }))
+    : events;
+
+  for (const event of eventsToCheck) {
     try {
       const eventData = await getEvent(event.eventTicker);
 
@@ -82,9 +92,10 @@ export async function settleGame(gameId: string): Promise<SettlementResult> {
 
   // If there are unsettled events, return partial result
   if (unsettledEvents.length > 0) {
+    const totalEventsCount = categories.length > 0 ? uniqueEventTickers.length : events.length;
     return {
       gameId,
-      totalEvents: events.length,
+      totalEvents: totalEventsCount,
       settledEvents: settledEvents.length,
       unsettledEvents,
       scores: [],
@@ -175,9 +186,11 @@ export async function settleGame(gameId: string): Promise<SettlementResult> {
     .where(eq(games.id, gameId))
     .run();
 
+  const totalEventsCount = categories.length > 0 ? uniqueEventTickers.length : events.length;
+
   return {
     gameId,
-    totalEvents: events.length,
+    totalEvents: totalEventsCount,
     settledEvents: settledEvents.length,
     unsettledEvents,
     scores,

@@ -15,7 +15,7 @@ export const Spinner = ({ size = 'md', className }: SpinnerProps) => {
   return (
     <div className={clsx('flex items-center justify-center', className)}>
       <svg
-        className={clsx('animate-spin text-blue-600', sizeStyles[size])}
+        className={clsx('animate-spin text-black', sizeStyles[size])}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 24 24"

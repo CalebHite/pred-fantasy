@@ -42,7 +42,8 @@ interface CreateGameInput {
   maxParticipants?: number;
   resolutionTime: Date;
   rules?: string;
-  events: { ticker: string; title: string; type: string }[];
+  categories?: { categoryKey: string; categoryName: string; categoryType: string }[];
+  events?: { ticker: string; title: string; type: string }[];
 }
 
 interface GameContextType {
@@ -86,6 +87,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           maxParticipants: input.maxParticipants,
           resolutionTime: input.resolutionTime.toISOString(),
           rules: input.rules,
+          categories: input.categories,
           events: input.events,
         });
 

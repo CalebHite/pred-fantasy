@@ -22,6 +22,15 @@ export const gameEvents = sqliteTable('game_events', {
   eventType: text('event_type', { enum: ['binary', 'categorical'] }).notNull(),
 });
 
+export const gameCategories = sqliteTable('game_categories', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  gameId: text('game_id').notNull().references(() => games.id),
+  categoryKey: text('category_key').notNull(),
+  categoryName: text('category_name').notNull(),
+  categoryType: text('category_type', { enum: ['crypto', 'sports', 'politics', 'entertainment'] }).notNull(),
+  matchingRules: text('matching_rules').notNull(),
+});
+
 export const participants = sqliteTable('participants', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   gameId: text('game_id').notNull().references(() => games.id),
@@ -37,8 +46,11 @@ export const predictions = sqliteTable('predictions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   gameId: text('game_id').notNull().references(() => games.id),
   participantId: integer('participant_id').notNull().references(() => participants.id),
+  categoryKey: text('category_key'),
   eventTicker: text('event_ticker').notNull(),
+  eventTitle: text('event_title'), // human-readable event name
   contractTicker: text('contract_ticker').notNull(),
+  contractLabel: text('contract_label'), // human-readable contract/pick name
   outcome: text('outcome', { enum: ['yes', 'no'] }).notNull(),
   entryPrice: text('entry_price'), // contract price at time of prediction (string, e.g. "0.67")
   isCorrect: integer('is_correct', { mode: 'boolean' }),

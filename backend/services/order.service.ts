@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { games, gameEvents, participants, predictions, geminiOrders } from '../db/schema';
+import { games, gameEvents, gameCategories, participants, predictions, geminiOrders } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getEvent } from './gemini/markets';
 import { placeOrder } from './gemini/trading';
@@ -28,8 +28,13 @@ export async function startGameAndPlaceOrders(gameId: string, hostAddress: strin
   if (game.status !== 'pending') throw new Error('Game is not in pending status');
   if (game.hostAddress !== hostAddress) throw new Error('Only the host can start the game');
 
+  // Check for categories (new system) or events (legacy)
+  const categories = db.select().from(gameCategories).where(eq(gameCategories.gameId, gameId)).all();
   const events = db.select().from(gameEvents).where(eq(gameEvents.gameId, gameId)).all();
-  if (events.length === 0) throw new Error('Game has no events');
+
+  if (categories.length === 0 && events.length === 0) {
+    throw new Error('Game has no categories or events');
+  }
 
   const gameParticipants = db.select().from(participants).where(eq(participants.gameId, gameId)).all();
   if (gameParticipants.length < 2) throw new Error('Need at least 2 participants to start');
@@ -41,7 +46,9 @@ export async function startGameAndPlaceOrders(gameId: string, hostAddress: strin
   const now = new Date().toISOString();
   db.update(games).set({ status: 'active', startedAt: now }).where(eq(games.id, gameId)).run();
 
-  const budgetPerEvent = game.buyInAmount / events.length;
+  // Budget allocation: Use categories if available, otherwise fall back to events
+  const divisionCount = categories.length > 0 ? categories.length : events.length;
+  const budgetPerCategory = game.buyInAmount / divisionCount;
   const results: OrderResult[] = [];
 
   for (const prediction of allPredictions) {
@@ -67,7 +74,7 @@ export async function startGameAndPlaceOrders(gameId: string, hostAddress: strin
 
     const price = bestAskPrice;
     const priceNum = parseFloat(price);
-    const quantity = String(Math.floor(budgetPerEvent / priceNum));
+    const quantity = String(Math.floor(budgetPerCategory / priceNum));
 
     if (parseInt(quantity) <= 0) {
       results.push({
@@ -80,7 +87,7 @@ export async function startGameAndPlaceOrders(gameId: string, hostAddress: strin
         status: 'rejected',
         quantity: '0',
         price,
-        error: 'Insufficient budget for this event at current price',
+        error: 'Insufficient budget for this category at current price',
       });
       continue;
     }

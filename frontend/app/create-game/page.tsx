@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
+import { CategoryCard } from '@/components/categories/CategoryCard';
 import { useWallet } from '@/contexts/WalletContext';
 import { useGame } from '@/contexts/GameContext';
 import { useUI } from '@/contexts/UIContext';
@@ -15,8 +16,7 @@ import {
   validateMaxParticipants,
   validateResolutionTime,
 } from '@/lib/utils/validation';
-import { fetchEvents, ApiGeminiEvent } from '@/lib/api/client';
-import clsx from 'clsx';
+import { fetchGameCategories, ApiCategory } from '@/lib/api/client';
 
 export default function CreateGamePage() {
   const router = useRouter();
@@ -27,45 +27,33 @@ export default function CreateGamePage() {
   const [buyInAmount, setBuyInAmount] = useState('10');
   const [maxParticipants, setMaxParticipants] = useState('');
   const [resolutionDays, setResolutionDays] = useState('7');
-  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Mock markets for testing
-  const mockMarkets: ApiGeminiEvent[] = [
-    { id: '1', ticker: 'BTC100K', title: 'Bitcoin to reach $100K by end of 2026', slug: 'btc-100k', description: '', imageUrl: '/icons/Bitcoin (BTC).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
-    { id: '2', ticker: 'ETH10K', title: 'Ethereum to reach $10K by Q3 2026', slug: 'eth-10k', description: '', imageUrl: '/icons/Ether (ETH).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
-    { id: '3', ticker: 'SUPERBOWL', title: 'NFL Super Bowl LXI Winner', slug: 'superbowl', description: '', imageUrl: '/icons/nfl.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
-    { id: '4', ticker: 'NBA', title: 'NBA Championship Winner 2026', slug: 'nba', description: '', imageUrl: '/icons/nba.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
-    { id: '5', ticker: 'EPL', title: 'English Premier League Winner', slug: 'epl', description: '', imageUrl: '/icons/epl.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
-    { id: '6', ticker: 'TENNIS', title: 'Wimbledon Champion 2026', slug: 'tennis', description: '', imageUrl: '/icons/tennis.svg', type: 'sports', category: 'sports', status: 'active', contracts: [] },
-    { id: '7', ticker: 'SOL', title: 'Solana Price Prediction', slug: 'sol', description: '', imageUrl: '/icons/Solana (SOL).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
-    { id: '8', ticker: 'XRP', title: 'XRP Price Prediction', slug: 'xrp', description: '', imageUrl: '/icons/XRP (XRP).svg', type: 'crypto', category: 'finance', status: 'active', contracts: [] },
-  ];
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
 
-  const [events, setEvents] = useState<ApiGeminiEvent[]>(mockMarkets);
-  const [eventsLoading, setEventsLoading] = useState(false);
-
-  // Fetch live events from Gemini
+  // Fetch categories from backend
   useEffect(() => {
     let cancelled = false;
-    setEventsLoading(true);
-    fetchEvents({ status: ['active'], limit: 50 })
+    setCategoriesLoading(true);
+    fetchGameCategories()
       .then((res) => {
-        if (!cancelled) {
-          // If API returns data, use it; otherwise keep mock data
-          if (res.data && res.data.length > 0) {
-            setEvents(res.data);
-          }
+        if (!cancelled && res.categories) {
+          setCategories(res.categories);
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          // Keep mock markets on error, don't show error notification for testing
-          console.log('Using mock markets for testing');
+          console.error('Failed to fetch categories:', error);
+          showNotification({
+            message: 'Failed to load categories',
+            type: 'error',
+          });
         }
       })
       .finally(() => {
-        if (!cancelled) setEventsLoading(false);
+        if (!cancelled) setCategoriesLoading(false);
       });
     return () => { cancelled = true; };
   }, [showNotification]);
@@ -78,19 +66,19 @@ export default function CreateGamePage() {
     }
   }, [wallet, router, openModal]);
 
-  const handleEventToggle = (ticker: string) => {
-    setSelectedEvents((prev) => {
-      if (prev.includes(ticker)) {
-        return prev.filter((t) => t !== ticker);
+  const handleCategoryToggle = (categoryKey: string) => {
+    setSelectedCategories((prev) => {
+      if (prev.includes(categoryKey)) {
+        return prev.filter((k) => k !== categoryKey);
       } else if (prev.length < MAX_CATEGORIES_ALLOWED) {
-        return [...prev, ticker];
+        return [...prev, categoryKey];
       }
       return prev;
     });
     // Clear error when user makes a selection
-    if (errors.events) {
+    if (errors.categories) {
       setErrors((prev) => {
-        const { events, ...rest } = prev;
+        const { categories, ...rest } = prev;
         return rest;
       });
     }
@@ -115,8 +103,8 @@ export default function CreateGamePage() {
     const resolutionValidation = validateResolutionTime(resolutionTime);
     if (!resolutionValidation.valid) newErrors.resolutionDays = resolutionValidation.error!;
 
-    if (selectedEvents.length < MIN_CATEGORIES_REQUIRED) {
-      newErrors.events = `Please select at least ${MIN_CATEGORIES_REQUIRED} markets`;
+    if (selectedCategories.length < MIN_CATEGORIES_REQUIRED) {
+      newErrors.categories = `Please select at least ${MIN_CATEGORIES_REQUIRED} categories`;
     }
 
     setErrors(newErrors);
@@ -127,9 +115,9 @@ export default function CreateGamePage() {
     e.preventDefault();
 
     if (!validateForm()) {
-      if (selectedEvents.length < MIN_CATEGORIES_REQUIRED) {
+      if (selectedCategories.length < MIN_CATEGORIES_REQUIRED) {
         showNotification({
-          message: `Please select at least ${MIN_CATEGORIES_REQUIRED} markets`,
+          message: `Please select at least ${MIN_CATEGORIES_REQUIRED} categories`,
           type: 'error',
         });
       }
@@ -137,15 +125,15 @@ export default function CreateGamePage() {
     }
 
     try {
-      const selectedEventObjects = events.filter((ev) => selectedEvents.includes(ev.ticker));
+      const selectedCategoryObjects = categories.filter((cat) => selectedCategories.includes(cat.key));
       const game = await createGame({
         buyInAmount: parseFloat(buyInAmount),
         maxParticipants: maxParticipants ? parseInt(maxParticipants) : undefined,
         resolutionTime: new Date(Date.now() + parseInt(resolutionDays) * 24 * 60 * 60 * 1000),
-        events: selectedEventObjects.map((ev) => ({
-          ticker: ev.ticker,
-          title: ev.title,
-          type: ev.type,
+        categories: selectedCategoryObjects.map((cat) => ({
+          categoryKey: cat.key,
+          categoryName: cat.name,
+          categoryType: cat.type,
         })),
       });
 
@@ -227,56 +215,39 @@ export default function CreateGamePage() {
               </Button>
             </div>
 
-            {/* Markets Section */}
+            {/* Categories Section */}
             <div className="pt-8">
-                <h2 className="text-2xl font-medium text-gray-900 mb-6">Prediction Markets</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Categories</h2>
 
-                {eventsLoading ? (
+                {categoriesLoading ? (
                   <div className="flex justify-center py-12">
                     <Spinner />
                   </div>
-                ) : events.length === 0 ? (
+                ) : categories.length === 0 ? (
                   <p className="text-center py-8 text-gray-500">
-                    No active prediction markets found. Check back later or verify your Gemini API config.
+                    No categories available. Check back later.
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-0">
-                    {events.map((event) => {
-                      const isSelected = selectedEvents.includes(event.ticker);
-                      return (
-                        <button
-                          key={event.ticker}
-                          type="button"
-                          onClick={() => handleEventToggle(event.ticker)}
-                          disabled={
-                            !isSelected &&
-                            selectedEvents.length >= MAX_CATEGORIES_ALLOWED
-                          }
-                          className={clsx(
-                            'flex items-center justify-center w-16 h-16 transition-all',
-                            isSelected ? 'opacity-100' : 'opacity-40 hover:opacity-60',
-                            !isSelected && selectedEvents.length >= MAX_CATEGORIES_ALLOWED
-                              ? 'opacity-20 cursor-not-allowed'
-                              : 'cursor-pointer'
-                          )}
-                        >
-                          <Image
-                            src={event.imageUrl}
-                            alt={event.title}
-                            width={40}
-                            height={40}
-                            className="object-contain"
-                          />
-                        </button>
-                      );
-                    })}
+                    {categories.map((category) => (
+                      <CategoryCard
+                        key={category.key}
+                        category={category}
+                        selected={selectedCategories.includes(category.key)}
+                        disabled={
+                          !selectedCategories.includes(category.key) &&
+                          selectedCategories.length >= MAX_CATEGORIES_ALLOWED
+                        }
+                        onClick={() => handleCategoryToggle(category.key)}
+                      />
+                    ))}
                   </div>
                 )}
 
                 <p className="mt-4 text-sm font-light text-gray-600">
-                  Select {MIN_CATEGORIES_REQUIRED}-{MAX_CATEGORIES_ALLOWED} markets.{' '}
+                  Select {MIN_CATEGORIES_REQUIRED}-{MAX_CATEGORIES_ALLOWED} categories.{' '}
                   <span className="font-normal">
-                    {selectedEvents.length} selected
+                    {selectedCategories.length} selected
                   </span>
                 </p>
               </div>

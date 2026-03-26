@@ -20,6 +20,24 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // ── Games ──────────────────────────────────────────────
 
+export interface ApiCategory {
+  key: string;
+  name: string;
+  type: 'crypto' | 'sports' | 'politics' | 'entertainment';
+  description: string;
+  icon?: string;
+  marketCount?: number;
+}
+
+export interface ApiGameCategory {
+  id: number;
+  gameId: string;
+  categoryKey: string;
+  categoryName: string;
+  categoryType: string;
+  matchingRules: string;
+}
+
 export interface ApiGame {
   id: string;
   code: string;
@@ -32,6 +50,7 @@ export interface ApiGame {
   createdAt: string;
   startedAt: string | null;
   resolvedAt: string | null;
+  categories: ApiGameCategory[];
   events: ApiGameEvent[];
   participants: ApiParticipant[];
 }
@@ -57,8 +76,11 @@ export interface ApiPrediction {
   id: number;
   gameId: string;
   participantId: number;
+  categoryKey: string | null;
   eventTicker: string;
+  eventTitle: string | null;
   contractTicker: string;
+  contractLabel: string | null;
   outcome: string;
   entryPrice: string | null; // contract price at time of pick (e.g. "0.67")
   isCorrect: boolean | null;
@@ -81,7 +103,8 @@ export async function createGame(params: {
   maxParticipants?: number;
   resolutionTime: string;
   rules?: string;
-  events: { ticker: string; title: string; type: string }[];
+  categories?: { categoryKey: string; categoryName: string; categoryType: string }[];
+  events?: { ticker: string; title: string; type: string }[];
 }): Promise<ApiGame> {
   return request<ApiGame>('/games', {
     method: 'POST',
@@ -107,7 +130,13 @@ export async function fetchPredictions(gameId: string, walletAddress?: string): 
 
 export async function submitPredictions(gameId: string, params: {
   walletAddress: string;
-  picks: { eventTicker: string; contractTicker: string; outcome: string; entryPrice?: string }[];
+  picks: {
+    categoryKey: string;
+    eventTicker: string;
+    contractTicker: string;
+    outcome: string;
+    entryPrice?: string;
+  }[];
 }): Promise<ApiPrediction[]> {
   const data = await request<{ predictions: ApiPrediction[] }>(`/games/${gameId}/predictions`, {
     method: 'POST',
@@ -176,6 +205,15 @@ export async function fetchEvent(ticker: string): Promise<ApiGeminiEvent> {
   return request(`/events/${encodeURIComponent(ticker)}`);
 }
 
+export async function fetchGameCategories(): Promise<{ categories: ApiCategory[] }> {
+  return request('/categories');
+}
+
+export async function fetchCategoryEvents(categoryKey: string): Promise<{ events: ApiGeminiEvent[] }> {
+  return request(`/categories/${encodeURIComponent(categoryKey)}/events`);
+}
+
+// Legacy Gemini categories endpoint
 export async function fetchCategories(): Promise<{ categories: string[] }> {
   return request('/categories');
 }

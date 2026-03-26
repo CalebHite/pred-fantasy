@@ -8,6 +8,20 @@
       "when": 1774497811041,
       "tag": "0000_unknown_lake",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1774536688197,
+      "tag": "0001_awesome_kylun",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1774540078966,
+      "tag": "0002_calm_snowbird",
+      "breakpoints": true
     }
   ]
 }

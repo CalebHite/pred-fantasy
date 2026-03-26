@@ -2,8 +2,10 @@
 
 import { useEffect, use, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
-import { PredictionWizard } from '@/components/predictions/PredictionWizard';
+import { getCategoryIcon, getCategoryIconSize } from '@/lib/categoryIcons';
+import { CategoryPickWizard } from '@/components/predictions/CategoryPickWizard';
 import { GameStatusIndicator } from '@/components/game/GameStatusIndicator';
 import { Scoreboard } from '@/components/game/Scoreboard';
 import { PnLChart } from '@/components/game/PnLChart';
@@ -227,8 +229,8 @@ export default function GamePage({ params }: PageProps) {
       return {
         id: String(pred.id),
         categoryId: pred.eventTicker,
-        categoryName: gameEvent?.eventTitle || pred.eventTicker,
-        selectedOption: contract?.label || pred.contractTicker,
+        categoryName: pred.eventTitle || gameEvent?.eventTitle || pred.eventTicker,
+        selectedOption: pred.contractLabel || contract?.label || pred.contractTicker,
         currentOdds: !isNaN(askPrice) && askPrice > 0
           ? `${Math.round(askPrice * 100)}¢`
           : undefined,
@@ -237,19 +239,25 @@ export default function GamePage({ params }: PageProps) {
     });
   };
 
-  const handlePredictionsComplete = async (predictionMap: Record<string, string>) => {
+  const handlePredictionsComplete = async (predictions: Array<{
+    categoryKey: string;
+    eventTicker: string;
+    contractTicker: string;
+    outcome: 'yes' | 'no';
+  }>) => {
     if (!wallet?.address) return;
 
     try {
-      // Convert prediction map to picks array, capturing current price as entry price
-      const picks = Object.entries(predictionMap).map(([eventTicker, contractTicker]) => {
-        const geminiEvent = geminiEvents[eventTicker];
-        const contract = geminiEvent?.contracts.find((c) => c.ticker === contractTicker);
+      // Add entry prices to predictions
+      const picks = predictions.map(pred => {
+        const geminiEvent = geminiEvents[pred.eventTicker];
+        const contract = geminiEvent?.contracts.find((c) => c.ticker === pred.contractTicker);
         const entryPrice = contract?.prices?.bestAsk?.toString();
         return {
-          eventTicker,
-          contractTicker,
-          outcome: 'yes' as const,
+          categoryKey: pred.categoryKey,
+          eventTicker: pred.eventTicker,
+          contractTicker: pred.contractTicker,
+          outcome: pred.outcome,
           entryPrice,
         };
       });
@@ -288,9 +296,23 @@ export default function GamePage({ params }: PageProps) {
   const userBets = buildUserBets();
 
   if (view === 'predictions') {
+    // Use CategoryPickWizard if game has categories, otherwise fall back to old system
+    if (apiGame && apiGame.categories && apiGame.categories.length > 0) {
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <CategoryPickWizard
+            gameCategories={apiGame.categories}
+            onComplete={handlePredictionsComplete}
+          />
+        </div>
+      );
+    }
+    // Legacy: Fall back to old market-based system
     return (
       <div className="min-h-screen bg-gray-50">
-        <PredictionWizard markets={markets} onComplete={handlePredictionsComplete} />
+        <p className="text-center py-12 text-gray-500">
+          This game uses the legacy market selection system. Please contact support.
+        </p>
       </div>
     );
   }
@@ -301,11 +323,29 @@ export default function GamePage({ params }: PageProps) {
       <div className="bg-gray-50 sticky top-20 z-30 pt-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            {/* Left: Game Code + Actions */}
+            {/* Left: Game Code + Category Icons + Actions */}
             <div className="flex items-center gap-3">
               <span className="text-sm font-mono text-gray-500">
                 {currentGame.code}
               </span>
+              {apiGame?.categories && apiGame.categories.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {apiGame.categories.map((cat) => {
+                    const iconSize = getCategoryIconSize(cat.categoryKey);
+                    return (
+                      <Image
+                        key={cat.categoryKey}
+                        src={getCategoryIcon(cat.categoryKey)}
+                        alt={cat.categoryName}
+                        width={iconSize}
+                        height={iconSize}
+                        className="w-8 h-8 object-contain"
+                        title={cat.categoryName}
+                      />
+                    );
+                  })}
+                </div>
+              )}
               <button
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Share"
@@ -337,9 +377,9 @@ export default function GamePage({ params }: PageProps) {
             />
 
             {/* Right: Make Predictions button */}
-            <div className="w-[140px] flex justify-end">
-              {isParticipant && predictions.length === 0 && markets.length > 0 && (
-                <Button onClick={handleStartPredictions} variant="black" size="sm">
+            <div className="w-[200px] flex justify-end">
+              {isParticipant && predictions.length === 0 && (apiGame?.categories && apiGame.categories.length > 0) && (
+                <Button onClick={handleStartPredictions} variant="outline-black" size="lg" className="w-full">
                   Make Picks
                 </Button>
               )}

@@ -1,7 +1,9 @@
 import { db } from '../db';
-import { games, gameEvents, participants, predictions } from '../db/schema';
+import { games, gameEvents, gameCategories, participants, predictions } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { generateGameCode, generateGameId } from '../utils/game-generator';
+import { getCategoryByKey, eventMatchesCategory } from './category.service';
+import { getEvent } from './gemini/markets';
 
 export interface CreateGameInput {
   hostAddress: string;
@@ -9,7 +11,8 @@ export interface CreateGameInput {
   maxParticipants?: number;
   resolutionTime: string; // ISO string
   rules?: string;
-  events: { ticker: string; title: string; type: 'binary' | 'categorical' }[];
+  categories: { categoryKey: string; categoryName: string; categoryType: string }[];
+  events?: { ticker: string; title: string; type: 'binary' | 'categorical' }[]; // Legacy support
 }
 
 export interface JoinGameInput {
@@ -20,6 +23,7 @@ export interface JoinGameInput {
 export interface SubmitPredictionsInput {
   walletAddress: string;
   picks: {
+    categoryKey: string;
     eventTicker: string;
     contractTicker: string;
     outcome: 'yes' | 'no';
@@ -28,12 +32,20 @@ export interface SubmitPredictionsInput {
 }
 
 /**
- * Create a new game with selected Gemini events.
+ * Create a new game with selected categories.
  */
 export async function createGame(input: CreateGameInput) {
   const gameId = generateGameId();
   const code = generateGameCode();
   const now = new Date().toISOString();
+
+  // Validate categories
+  if (!input.categories || input.categories.length === 0) {
+    // Legacy support: check for events
+    if (!input.events || input.events.length === 0) {
+      throw new Error('At least one category or event is required');
+    }
+  }
 
   // Insert game
   db.insert(games).values({
@@ -48,14 +60,34 @@ export async function createGame(input: CreateGameInput) {
     createdAt: now,
   }).run();
 
-  // Insert game events
-  for (const event of input.events) {
-    db.insert(gameEvents).values({
-      gameId,
-      eventTicker: event.ticker,
-      eventTitle: event.title,
-      eventType: event.type,
-    }).run();
+  // Insert game categories (new system)
+  if (input.categories && input.categories.length > 0) {
+    for (const category of input.categories) {
+      const categoryDef = getCategoryByKey(category.categoryKey);
+      if (!categoryDef) {
+        throw new Error(`Invalid category: ${category.categoryKey}`);
+      }
+
+      db.insert(gameCategories).values({
+        gameId,
+        categoryKey: category.categoryKey,
+        categoryName: category.categoryName,
+        categoryType: category.categoryType,
+        matchingRules: JSON.stringify(categoryDef.matchingRules),
+      }).run();
+    }
+  }
+
+  // Insert game events (legacy system)
+  if (input.events && input.events.length > 0) {
+    for (const event of input.events) {
+      db.insert(gameEvents).values({
+        gameId,
+        eventTicker: event.ticker,
+        eventTitle: event.title,
+        eventType: event.type,
+      }).run();
+    }
   }
 
   // Add host as first participant
@@ -77,10 +109,20 @@ export async function getGameById(gameId: string) {
   const game = db.select().from(games).where(eq(games.id, gameId)).get();
   if (!game) return null;
 
+  // Try categories first (new system)
+  const categories = db.select().from(gameCategories).where(eq(gameCategories.gameId, gameId)).all();
+
+  // Fallback to events (legacy system)
   const events = db.select().from(gameEvents).where(eq(gameEvents.gameId, gameId)).all();
+
   const gameParticipants = db.select().from(participants).where(eq(participants.gameId, gameId)).all();
 
-  return { ...game, events, participants: gameParticipants };
+  return {
+    ...game,
+    categories,
+    events, // Keep for backward compatibility
+    participants: gameParticipants
+  };
 }
 
 /**
@@ -149,7 +191,76 @@ export async function submitPredictions(gameId: string, input: SubmitPredictions
     .get();
   if (!participant) throw new Error('Not a participant in this game');
 
+  // Get game categories for validation
+  const gameCategs = db.select().from(gameCategories).where(eq(gameCategories.gameId, gameId)).all();
+  const validCategoryKeys = new Set(gameCategs.map(c => c.categoryKey));
+
   const now = new Date().toISOString();
+
+  // Pre-fetch event data (used for both validation and storing human-readable names)
+  const eventDataCache = new Map<string, Awaited<ReturnType<typeof getEvent>>>();
+  for (const pick of input.picks) {
+    if (!eventDataCache.has(pick.eventTicker)) {
+      try {
+        const eventData = await getEvent(pick.eventTicker);
+        eventDataCache.set(pick.eventTicker, eventData);
+      } catch {
+        // Will be caught during validation below
+      }
+    }
+  }
+
+  // Validate picks if using category system
+  if (gameCategs.length > 0) {
+    for (const pick of input.picks) {
+      // Validate category belongs to game
+      if (!validCategoryKeys.has(pick.categoryKey)) {
+        throw new Error(`Category ${pick.categoryKey} is not part of this game`);
+      }
+
+      // Validate event belongs to category
+      const category = getCategoryByKey(pick.categoryKey);
+      if (!category) {
+        throw new Error(`Invalid category: ${pick.categoryKey}`);
+      }
+
+      const eventData = eventDataCache.get(pick.eventTicker);
+      if (!eventData) {
+        throw new Error(`Event not found: ${pick.eventTicker}`);
+      }
+
+      // Check if event matches category
+      if (!eventMatchesCategory(eventData, category)) {
+        throw new Error(
+          `Event ${pick.eventTicker} does not belong to category ${pick.categoryKey}`
+        );
+      }
+
+      // Check if event is active
+      if (eventData.status !== 'active' && eventData.status !== 'approved') {
+        throw new Error(`Event ${pick.eventTicker} is not active (status: ${eventData.status})`);
+      }
+
+      // Validate contract exists in event
+      const contract = eventData.contracts.find(
+        c => c.ticker === pick.contractTicker || c.instrumentSymbol === pick.contractTicker
+      );
+      if (!contract) {
+        throw new Error(`Contract ${pick.contractTicker} not found in event ${pick.eventTicker}`);
+      }
+    }
+
+    // Validate: One pick per category
+    const categoryCounts = new Map<string, number>();
+    for (const pick of input.picks) {
+      categoryCounts.set(pick.categoryKey, (categoryCounts.get(pick.categoryKey) || 0) + 1);
+    }
+    for (const [categoryKey, count] of categoryCounts.entries()) {
+      if (count > 1) {
+        throw new Error(`Multiple picks for category ${categoryKey}. Only one pick per category allowed.`);
+      }
+    }
+  }
 
   // Delete existing predictions for this participant (allow re-submission)
   db.delete(predictions)
@@ -158,11 +269,19 @@ export async function submitPredictions(gameId: string, input: SubmitPredictions
 
   // Insert new predictions
   for (const pick of input.picks) {
+    const eventData = eventDataCache.get(pick.eventTicker);
+    const contract = eventData?.contracts.find(
+      c => c.ticker === pick.contractTicker || c.instrumentSymbol === pick.contractTicker
+    );
+
     db.insert(predictions).values({
       gameId,
       participantId: participant.id,
+      categoryKey: pick.categoryKey || null,
       eventTicker: pick.eventTicker,
+      eventTitle: eventData?.title ?? null,
       contractTicker: pick.contractTicker,
+      contractLabel: contract?.label ?? null,
       outcome: pick.outcome,
       entryPrice: pick.entryPrice ?? null,
       createdAt: now,

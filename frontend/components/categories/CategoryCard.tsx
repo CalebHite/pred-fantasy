@@ -1,45 +1,42 @@
-import { Category } from '@/types';
-import { Card } from '@/components/ui/Card';
+'use client';
+
+import Image from 'next/image';
 import clsx from 'clsx';
+import { ApiCategory } from '@/lib/api/client';
 
 interface CategoryCardProps {
-  category: Category;
+  category: ApiCategory;
   selected: boolean;
-  onToggle: (categoryId: string) => void;
+  disabled: boolean;
+  onClick: () => void;
 }
 
-export function CategoryCard({ category, selected, onToggle }: CategoryCardProps) {
+export const CategoryCard = ({ category, selected, disabled, onClick }: CategoryCardProps) => {
+  // Use larger size for sports icons that need it
+  const needsLargerSize = category.icon?.includes('nba.svg') ||
+                          category.icon?.includes('epl.svg') ||
+                          category.icon?.includes('tennis.svg');
+
+  const iconSize = needsLargerSize ? 67 : 40;
+
   return (
-    <Card
-      padding="md"
-      hover
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
       className={clsx(
-        'cursor-pointer transition-all',
-        selected && 'ring-2 ring-blue-500 bg-blue-50'
+        'flex items-center justify-center w-16 h-16 transition-all',
+        selected ? 'opacity-100' : 'opacity-40 hover:opacity-60',
+        !selected && disabled ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'
       )}
-      onClick={() => onToggle(category.id)}
     >
-      <div className="flex items-start gap-3">
-        <div className="text-3xl flex-shrink-0">{category.icon}</div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-900 mb-1">{category.name}</h3>
-          <p className="text-sm text-gray-600 line-clamp-2">{category.description}</p>
-          <span className="inline-block mt-2 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded">
-            {category.type}
-          </span>
-        </div>
-        {selected && (
-          <div className="flex-shrink-0 text-blue-600">
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </div>
-        )}
-      </div>
-    </Card>
+      <Image
+        src={category.icon || '/icons/swords.svg'}
+        alt={category.name}
+        width={iconSize}
+        height={iconSize}
+        className="object-contain"
+      />
+    </button>
   );
-}
+};

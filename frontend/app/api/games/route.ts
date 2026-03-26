@@ -17,11 +17,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { hostAddress, buyInAmount, maxParticipants, resolutionTime, rules, events } = body;
+    const { hostAddress, buyInAmount, maxParticipants, resolutionTime, rules, categories, events } = body;
 
-    if (!hostAddress || !buyInAmount || !resolutionTime || !events?.length) {
+    // Accept either categories (new system) or events (legacy)
+    if (!hostAddress || !buyInAmount || !resolutionTime) {
       return NextResponse.json(
-        { error: 'Missing required fields: hostAddress, buyInAmount, resolutionTime, events' },
+        { error: 'Missing required fields: hostAddress, buyInAmount, resolutionTime' },
+        { status: 400 }
+      );
+    }
+
+    if (!categories?.length && !events?.length) {
+      return NextResponse.json(
+        { error: 'At least one category or event is required' },
         { status: 400 }
       );
     }
@@ -32,7 +40,8 @@ export async function POST(request: NextRequest) {
       maxParticipants,
       resolutionTime,
       rules,
-      events,
+      categories: categories || [],
+      events: events || [],
     });
 
     return NextResponse.json(game, { status: 201 });

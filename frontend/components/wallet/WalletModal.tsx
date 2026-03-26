@@ -26,6 +26,7 @@ export function WalletModal() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [nicknameError, setNicknameError] = useState(false);
   const [walletSelectionError, setWalletSelectionError] = useState(false);
+  const [connectionInitiated, setConnectionInitiated] = useState(false);
 
   // Display wallet errors
   useEffect(() => {
@@ -56,13 +57,13 @@ export function WalletModal() {
       }
     };
 
-    if (wallet?.isConnected && isOnWrongNetwork && step === 'onboarding') {
+    if (wallet?.isConnected && isOnWrongNetwork && step === 'onboarding' && connectionInitiated) {
       setStep('network');
-    } else if (wallet?.isConnected && !isOnWrongNetwork && step === 'onboarding' && nickname.trim()) {
+    } else if (wallet?.isConnected && !isOnWrongNetwork && step === 'onboarding' && nickname.trim() && connectionInitiated) {
       // Connected successfully on correct network - complete onboarding
       completeOnboarding();
     }
-  }, [wallet, isOnWrongNetwork, step, nickname, setNickname, closeModal, showNotification]);
+  }, [wallet, isOnWrongNetwork, step, nickname, setNickname, closeModal, showNotification, connectionInitiated]);
 
   const handleWalletSelect = (walletId: string) => {
     setSelectedWallet(walletId);
@@ -87,6 +88,7 @@ export function WalletModal() {
 
     setError(null);
     setIsSubmitting(true);
+    setConnectionInitiated(true);
 
     try {
       // Connect wallet
@@ -96,6 +98,7 @@ export function WalletModal() {
     } catch (err) {
       // Error already set by wallet context
       console.error('Wallet connection error:', err);
+      setConnectionInitiated(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -124,6 +127,7 @@ export function WalletModal() {
     setSelectedWallet('');
     setNicknameValue('');
     setError(null);
+    setConnectionInitiated(false);
   };
 
   const handleClose = () => {
