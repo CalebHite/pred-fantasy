@@ -54,7 +54,7 @@ export default function Home() {
         {/* Background Image - Cropped on Right */}
         <div
           className="absolute right-0 top-0 bottom-0 w-full lg:w-[50%] bg-cover bg-center opacity-20 lg:opacity-100"
-          style={{ backgroundImage: 'url(/images/bg.png)' }}
+          style={{ backgroundImage: 'url(/images/background.png)' }}
         />
 
         {/* Content */}
