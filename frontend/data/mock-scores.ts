@@ -1,5 +1,13 @@
 // Mock scoreboard data for Scoreboard component
 
+export interface PositionDetail {
+  contractLabel: string; // e.g. "Kansas City Chiefs"
+  entryPrice: number; // Price when bought (0-1 scale, e.g. 0.67)
+  currentPrice: number; // Current price (0-1 scale)
+  pnl: number; // currentPrice - entryPrice
+  pnlPercent: number; // (currentPrice - entryPrice) / entryPrice * 100
+}
+
 export interface ScoreboardEntry {
   userId: string;
   nickname: string;
@@ -13,6 +21,7 @@ export interface ScoreboardEntry {
   totalCost?: number; // Sum of entry prices (cost basis)
   totalValue?: number; // Sum of current contract prices
   pnl?: number; // totalValue - totalCost
+  positions?: PositionDetail[]; // Individual position details
 }
 
 // Mock scoreboard data (sorted by rank)

@@ -1,12 +1,13 @@
 'use client';
 
-import { getCategoryById } from '@/data/mock-categories';
+import { getCategoryIcon } from '@/lib/categoryIcons';
 import Image from 'next/image';
 import clsx from 'clsx';
 
 export interface UserBet {
   id: string;
   categoryId: string;
+  categoryKey?: string; // For icon lookup
   categoryName: string;
   selectedOption: string; // The prediction/strike the user selected
   currentOdds?: string; // Current odds
@@ -24,9 +25,18 @@ export const UserBets = ({ bets, className }: UserBetsProps) => {
     return (
       <div className={clsx('w-full bg-white rounded-2xl shadow-sm p-6', className)}>
         <h3 className="text-xl font-medium text-black mb-4">Your Bets</h3>
-        <p className="text-sm font-light text-gray-500 text-center py-8">
-          No predictions made yet
-        </p>
+        <div className="flex flex-col items-center justify-center py-8">
+          <Image
+            src="/icons/swords.svg"
+            alt="No bets"
+            width={48}
+            height={48}
+            className="w-12 h-12 opacity-30 mb-3"
+          />
+          <p className="text-sm font-light text-gray-500 text-center">
+            No predictions made yet
+          </p>
+        </div>
       </div>
     );
   }
@@ -37,9 +47,6 @@ export const UserBets = ({ bets, className }: UserBetsProps) => {
 
       <div className="space-y-3">
         {bets.map((bet) => {
-          const category = getCategoryById(bet.categoryId);
-          const isEmoji = category?.icon && !category.icon.startsWith('/');
-
           const getStatusColor = () => {
             switch (bet.status) {
               case 'winning':
@@ -66,6 +73,8 @@ export const UserBets = ({ bets, className }: UserBetsProps) => {
             }
           };
 
+          const iconSrc = bet.categoryKey ? getCategoryIcon(bet.categoryKey) : '/icons/swords.svg';
+
           return (
             <div
               key={bet.id}
@@ -73,20 +82,14 @@ export const UserBets = ({ bets, className }: UserBetsProps) => {
             >
               <div className="flex items-start gap-3">
                 {/* Category Icon */}
-                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                  {category && (
-                    isEmoji ? (
-                      <span className="text-xl">{category.icon}</span>
-                    ) : (
-                      <Image
-                        src={category.icon || '/icons/swords.svg'}
-                        alt={category.name}
-                        width={24}
-                        height={24}
-                        className="w-6 h-6 object-contain"
-                      />
-                    )
-                  )}
+                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                  <Image
+                    src={iconSrc}
+                    alt={bet.categoryName}
+                    width={32}
+                    height={32}
+                    className="w-8 h-8 object-contain"
+                  />
                 </div>
 
                 {/* Bet Details */}
@@ -121,7 +124,13 @@ export const UserBets = ({ bets, className }: UserBetsProps) => {
                         </span>
                       )}
                       {bet.initialOdds && bet.currentOdds && (
-                        <span className="text-xs text-gray-400">→</span>
+                        <Image
+                          src="/icons/arrows.svg"
+                          alt="odds change"
+                          width={12}
+                          height={12}
+                          className="w-3 h-3 opacity-40"
+                        />
                       )}
                       {bet.currentOdds && (
                         <span

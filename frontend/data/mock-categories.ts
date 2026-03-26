@@ -38,7 +38,7 @@ export const MOCK_CATEGORIES: Category[] = [
     name: 'NCAA',
     description: 'Predict March Madness outcomes',
     type: 'sports',
-    icon: '🏀',
+    icon: '/icons/ncaa.svg',
     isActive: true,
   },
   {

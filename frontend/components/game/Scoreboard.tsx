@@ -19,9 +19,6 @@ export const Scoreboard = ({ participants, currentUserId, className }: Scoreboar
     <div className={clsx('w-full bg-white rounded-2xl shadow-sm p-6', className)}>
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-xl font-medium text-black">Leaderboard</h3>
-        {hasPnl && (
-          <span className="text-xs font-light text-gray-400">Ranked by P&L</span>
-        )}
       </div>
 
       {sortedParticipants.length === 0 ? (
@@ -32,15 +29,19 @@ export const Scoreboard = ({ participants, currentUserId, className }: Scoreboar
         <div className="space-y-4">
           {sortedParticipants.map((participant) => {
             const isCurrentUser = participant.userId === currentUserId;
-            const pnlCents = (participant.pnl ?? 0) * 100;
-            const isPositive = pnlCents >= 0;
+            const cost = participant.totalCost ?? 0;
+            const pnlPercent = cost > 0 ? ((participant.pnl ?? 0) / cost) * 100 : 0;
+            const isPositive = pnlPercent >= 0;
             const hasPicks = (participant.numPicks ?? 0) > 0;
             // For progress bar: normalize PnL relative to the max absolute PnL
             const maxAbsPnl = Math.max(
-              ...sortedParticipants.map((p) => Math.abs((p.pnl ?? 0) * 100)),
+              ...sortedParticipants.map((p) => {
+                const pCost = p.totalCost ?? 0;
+                return pCost > 0 ? Math.abs(((p.pnl ?? 0) / pCost) * 100) : 0;
+              }),
               1
             );
-            const barWidth = Math.abs(pnlCents) / maxAbsPnl * 100;
+            const barWidth = Math.abs(pnlPercent) / maxAbsPnl * 100;
 
             return (
               <div key={participant.userId} className="space-y-2">
@@ -113,17 +114,12 @@ export const Scoreboard = ({ participants, currentUserId, className }: Scoreboar
                   {/* Score — PnL or waiting state */}
                   <div className="text-right">
                     {hasPicks ? (
-                      <>
-                        <span className={clsx(
-                          'text-lg font-medium',
-                          isPositive ? 'text-green-600' : 'text-red-500'
-                        )}>
-                          {isPositive ? '+' : ''}{pnlCents.toFixed(1)}¢
-                        </span>
-                        <span className="text-xs font-light text-gray-400 ml-1.5">
-                          {participant.numPicks} pick{participant.numPicks !== 1 ? 's' : ''}
-                        </span>
-                      </>
+                      <span className={clsx(
+                        'text-lg font-medium',
+                        isPositive ? 'text-green-600' : 'text-red-500'
+                      )}>
+                        {isPositive ? '+' : ''}{pnlPercent.toFixed(1)}%
+                      </span>
                     ) : (
                       <span className="text-sm font-light text-gray-400">No picks yet</span>
                     )}

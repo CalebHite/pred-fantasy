@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, use, useState, useCallback } from 'react';
+import { useEffect, use, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
@@ -29,7 +29,11 @@ interface PageProps {
   params: Promise<{ gameId: string }>;
 }
 
-/** Assign a consistent color to each participant based on index. */
+/**
+ * Assign a consistent color to each participant based on index.
+ * Supports up to 10 participants; cycles through colors if more participants join.
+ * Colors are used for charts, avatars, and visual identification.
+ */
 const PARTICIPANT_COLORS = [
   '#FF6B35', '#00D9FF', '#9D4EDD', '#06FFA5', '#FFB700',
   '#FF4D6D', '#3A86FF', '#FB5607', '#8338EC', '#FFBE0B',
@@ -42,6 +46,7 @@ export default function GamePage({ params }: PageProps) {
   const { currentGame, loadGame } = useGame();
   const { openModal, showNotification } = useUI();
   const [view, setView] = useState<'predictions' | 'live'>('live');
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Real data state
   const [apiGame, setApiGame] = useState<ApiGame | null>(null);
@@ -139,6 +144,113 @@ export default function GamePage({ params }: PageProps) {
     }
   }, [wallet, openModal]);
 
+  // Build scoreboard from real participants using PnL (current value vs cost basis)
+  const buildScoreboard = useCallback((): ScoreboardEntry[] => {
+    if (!apiGame) return [];
+
+    return apiGame.participants.map((p, idx) => {
+      const participantPreds = allPredictions.filter(
+        (pred) => pred.participantId === p.id
+      );
+
+      let totalCost = 0;
+      let totalValue = 0;
+      let pricedCount = 0;
+      const positions = [];
+
+      for (const pred of participantPreds) {
+        const geminiEvent = geminiEvents[pred.eventTicker];
+        const contract = geminiEvent?.contracts.find((c) => c.ticker === pred.contractTicker);
+
+        // Current value from live price
+        const rawCurrent = contract?.prices?.lastTradePrice ?? contract?.prices?.bestAsk;
+        const currentPrice = Number(rawCurrent);
+
+        // Entry price from when prediction was made
+        const entryPrice = Number(pred.entryPrice);
+
+        if (!isNaN(currentPrice) && currentPrice > 0) {
+          const effectiveEntry = !isNaN(entryPrice) && entryPrice > 0 ? entryPrice : currentPrice;
+          totalValue += currentPrice;
+          totalCost += effectiveEntry;
+          pricedCount++;
+
+          // Add position detail for tooltip
+          const positionPnl = currentPrice - effectiveEntry;
+          const positionPnlPercent = effectiveEntry > 0 ? (positionPnl / effectiveEntry) * 100 : 0;
+          positions.push({
+            contractLabel: pred.contractLabel || contract?.label || pred.contractTicker,
+            entryPrice: effectiveEntry,
+            currentPrice,
+            pnl: positionPnl,
+            pnlPercent: positionPnlPercent,
+          });
+        }
+      }
+
+      const pnl = totalValue - totalCost;
+      const avgOdds = pricedCount > 0 ? totalValue / pricedCount : 0;
+
+      return {
+        userId: String(p.id),
+        nickname: p.nickname,
+        address: p.walletAddress,
+        score: Math.round(pnl * 100), // cents for display
+        avgOdds,
+        numPicks: participantPreds.length,
+        totalCost,
+        totalValue,
+        pnl,
+        positions,
+        rank: idx + 1,
+        color: PARTICIPANT_COLORS[idx % PARTICIPANT_COLORS.length],
+      };
+    })
+    .sort((a, b) => (b.pnl ?? 0) - (a.pnl ?? 0))
+    .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+  }, [apiGame, allPredictions, geminiEvents]);
+
+  // Build user bets from real predictions
+  const buildUserBets = useCallback((): UserBet[] => {
+    if (!apiGame) return [];
+
+    return predictions.map((pred) => {
+      const gameEvent = apiGame.events.find((e) => e.eventTicker === pred.eventTicker);
+      const geminiEvent = geminiEvents[pred.eventTicker];
+      const contract = geminiEvent?.contracts.find((c) => c.ticker === pred.contractTicker);
+
+      let status: UserBet['status'] = 'pending';
+      if (pred.isCorrect === true) status = 'winning';
+      else if (pred.isCorrect === false) status = 'losing';
+
+      const askPrice = Number(contract?.prices?.bestAsk);
+
+      return {
+        id: String(pred.id),
+        categoryId: pred.eventTicker,
+        categoryKey: pred.categoryKey || undefined,
+        categoryName: pred.eventTitle || gameEvent?.eventTitle || pred.eventTicker,
+        selectedOption: pred.contractLabel || contract?.label || pred.contractTicker,
+        currentOdds: !isNaN(askPrice) && askPrice > 0
+          ? `${Math.round(askPrice * 100)}¢`
+          : undefined,
+        status,
+      };
+    });
+  }, [apiGame, predictions, geminiEvents]);
+
+  // Memoize current user's participant ID to avoid duplicate lookups
+  // Must be before early returns to follow Rules of Hooks
+  const currentUserId = useMemo(() => {
+    if (!apiGame || !wallet?.address) return undefined;
+    const participant = apiGame.participants.find((p) => p.walletAddress === wallet.address);
+    return participant ? String(participant.id) : undefined;
+  }, [apiGame, wallet?.address]);
+
+  // Memoize expensive computations
+  const scoreboard = useMemo(() => buildScoreboard(), [buildScoreboard]);
+  const userBets = useMemo(() => buildUserBets(), [buildUserBets]);
+
   if (!currentGame || currentGame.id !== resolvedParams.gameId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -156,88 +268,6 @@ export default function GamePage({ params }: PageProps) {
   }
 
   const isHost = wallet?.address === currentGame.host;
-  const isParticipant = currentGame.participants.some((p) => p.address === wallet?.address);
-
-  // Build scoreboard from real participants using PnL (current value vs cost basis)
-  const buildScoreboard = (): ScoreboardEntry[] => {
-    if (!apiGame) return [];
-
-    return apiGame.participants.map((p, idx) => {
-      const participantPreds = allPredictions.filter(
-        (pred) => pred.participantId === p.id
-      );
-
-      let totalCost = 0;
-      let totalValue = 0;
-      let pricedCount = 0;
-
-      for (const pred of participantPreds) {
-        const geminiEvent = geminiEvents[pred.eventTicker];
-        const contract = geminiEvent?.contracts.find((c) => c.ticker === pred.contractTicker);
-
-        // Current value from live price
-        const rawCurrent = contract?.prices?.lastTradePrice ?? contract?.prices?.bestAsk;
-        const currentPrice = Number(rawCurrent);
-
-        // Entry price from when prediction was made
-        const entryPrice = Number(pred.entryPrice);
-
-        if (!isNaN(currentPrice) && currentPrice > 0) {
-          totalValue += currentPrice;
-          // If we have entry price use it, otherwise assume bought at current (PnL = 0 for that pick)
-          totalCost += !isNaN(entryPrice) && entryPrice > 0 ? entryPrice : currentPrice;
-          pricedCount++;
-        }
-      }
-
-      const pnl = totalValue - totalCost;
-      const avgOdds = pricedCount > 0 ? totalValue / pricedCount : 0;
-
-      return {
-        userId: String(p.id),
-        nickname: p.nickname,
-        address: p.walletAddress,
-        score: Math.round(pnl * 100), // cents for display
-        avgOdds,
-        numPicks: participantPreds.length,
-        totalCost,
-        totalValue,
-        pnl,
-        rank: idx + 1,
-        color: PARTICIPANT_COLORS[idx % PARTICIPANT_COLORS.length],
-      };
-    })
-    .sort((a, b) => (b.pnl ?? 0) - (a.pnl ?? 0))
-    .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-  };
-
-  // Build user bets from real predictions
-  const buildUserBets = (): UserBet[] => {
-    if (!apiGame) return [];
-
-    return predictions.map((pred) => {
-      const gameEvent = apiGame.events.find((e) => e.eventTicker === pred.eventTicker);
-      const geminiEvent = geminiEvents[pred.eventTicker];
-      const contract = geminiEvent?.contracts.find((c) => c.ticker === pred.contractTicker);
-
-      let status: UserBet['status'] = 'pending';
-      if (pred.isCorrect === true) status = 'winning';
-      else if (pred.isCorrect === false) status = 'losing';
-
-      const askPrice = Number(contract?.prices?.bestAsk);
-
-      return {
-        id: String(pred.id),
-        categoryId: pred.eventTicker,
-        categoryName: pred.eventTitle || gameEvent?.eventTitle || pred.eventTicker,
-        selectedOption: pred.contractLabel || contract?.label || pred.contractTicker,
-        currentOdds: !isNaN(askPrice) && askPrice > 0
-          ? `${Math.round(askPrice * 100)}¢`
-          : undefined,
-        status,
-      };
-    });
-  };
 
   const handlePredictionsComplete = async (predictions: Array<{
     categoryKey: string;
@@ -292,8 +322,12 @@ export default function GamePage({ params }: PageProps) {
     (new Date(currentGame.config.resolutionTime).getTime() - new Date().getTime()) / 1000
   );
 
-  const scoreboard = buildScoreboard();
-  const userBets = buildUserBets();
+  // Computed boolean for showing "Make Picks" button
+  const isParticipant = currentGame.participants.some((p) => p.address === wallet?.address);
+  const shouldShowMakePicksButton = isParticipant &&
+    predictions.length === 0 &&
+    apiGame?.categories &&
+    apiGame.categories.length > 0;
 
   if (view === 'predictions') {
     // Use CategoryPickWizard if game has categories, otherwise fall back to old system
@@ -349,6 +383,7 @@ export default function GamePage({ params }: PageProps) {
               <button
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Share"
+                aria-label="Share game code"
                 onClick={() => {
                   navigator.clipboard.writeText(currentGame.code);
                   showNotification({ message: 'Game code copied!', type: 'success' });
@@ -368,6 +403,32 @@ export default function GamePage({ params }: PageProps) {
                   />
                 </svg>
               </button>
+              <button
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Settings"
+                aria-label="Open game settings"
+                onClick={() => setShowSettingsModal(true)}
+              >
+                <svg
+                  className="w-5 h-5 text-gray-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </button>
             </div>
 
             {/* Center: Game Status */}
@@ -378,7 +439,7 @@ export default function GamePage({ params }: PageProps) {
 
             {/* Right: Make Predictions button */}
             <div className="w-[200px] flex justify-end">
-              {isParticipant && predictions.length === 0 && (apiGame?.categories && apiGame.categories.length > 0) && (
+              {shouldShowMakePicksButton && (
                 <Button onClick={handleStartPredictions} variant="outline-black" size="lg" className="w-full">
                   Make Picks
                 </Button>
@@ -425,11 +486,7 @@ export default function GamePage({ params }: PageProps) {
               <div className="lg:col-span-2">
                 <Scoreboard
                   participants={scoreboard}
-                  currentUserId={
-                    apiGame?.participants.find((p) => p.walletAddress === wallet?.address)
-                      ? String(apiGame.participants.find((p) => p.walletAddress === wallet?.address)!.id)
-                      : undefined
-                  }
+                  currentUserId={currentUserId}
                 />
               </div>
             </div>
@@ -438,23 +495,56 @@ export default function GamePage({ params }: PageProps) {
             <div className="mt-8">
               <PnLChart
                 participants={scoreboard}
-                currentUserId={
-                  apiGame?.participants.find((p) => p.walletAddress === wallet?.address)
-                    ? String(apiGame.participants.find((p) => p.walletAddress === wallet?.address)!.id)
-                    : undefined
-                }
+                currentUserId={currentUserId}
               />
             </div>
+          </>
+        )}
+      </div>
 
-            {/* Game Info Cards - Below Main Content */}
-            <div className="mt-8 grid md:grid-cols-3 gap-4">
-              <div className="bg-white rounded-2xl shadow-sm p-6">
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowSettingsModal(false)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-xl max-w-md w-full p-8 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Close settings"
+              onClick={() => setShowSettingsModal(false)}
+            >
+              <svg
+                className="w-5 h-5 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {/* Modal content */}
+            <h2 className="text-2xl font-medium text-black mb-6">Game Settings</h2>
+
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded-2xl p-6">
                 <p className="text-sm font-light text-gray-500">Buy-in</p>
                 <p className="text-2xl font-medium text-black mt-1">
                   ${currentGame.config.buyInAmount}
                 </p>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm p-6">
+
+              <div className="bg-gray-50 rounded-2xl p-6">
                 <p className="text-sm font-light text-gray-500">Participants</p>
                 <p className="text-2xl font-medium text-black mt-1">
                   {currentGame.participants.length}
@@ -465,16 +555,17 @@ export default function GamePage({ params }: PageProps) {
                   )}
                 </p>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm p-6">
+
+              <div className="bg-gray-50 rounded-2xl p-6">
                 <p className="text-sm font-light text-gray-500">Events</p>
                 <p className="text-2xl font-medium text-black mt-1">
                   {apiGame?.events.length || 0}
                 </p>
               </div>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
