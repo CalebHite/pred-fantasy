@@ -32,8 +32,8 @@ export default function Home() {
   };
 
   const handleContinue = () => {
-    if (gameCode.length !== 7) {
-      setError('Please enter a valid 7-character game code');
+    if (gameCode.length !== 6) {
+      setError('Please enter a valid 6-character game code');
       return;
     }
 
@@ -42,7 +42,7 @@ export default function Home() {
 
   const handleComplete = (code: string) => {
     // Auto-continue when code is complete
-    if (code.length === 7) {
+    if (code.length === 6) {
       router.push(`/join/${code}`);
     }
   };
@@ -111,7 +111,7 @@ export default function Home() {
                 onChange={handleGameCodeChange}
                 onComplete={handleComplete}
                 error={error}
-                length={7}
+                length={6}
               />
             </div>
 

@@ -18,7 +18,7 @@ export const GameCodeInput = ({
   onComplete,
   error,
   disabled = false,
-  length = 7,
+  length = 6,
 }: GameCodeInputProps) => {
   const [values, setValues] = useState<string[]>(Array(length).fill(''));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);

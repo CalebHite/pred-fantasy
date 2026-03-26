@@ -23,6 +23,7 @@ export interface SubmitPredictionsInput {
     eventTicker: string;
     contractTicker: string;
     outcome: 'yes' | 'no';
+    entryPrice?: string; // contract price at time of pick (e.g. "0.67")
   }[];
 }
 
@@ -163,6 +164,7 @@ export async function submitPredictions(gameId: string, input: SubmitPredictions
       eventTicker: pick.eventTicker,
       contractTicker: pick.contractTicker,
       outcome: pick.outcome,
+      entryPrice: pick.entryPrice ?? null,
       createdAt: now,
     }).run();
   }

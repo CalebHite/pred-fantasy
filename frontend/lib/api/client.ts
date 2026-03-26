@@ -60,6 +60,7 @@ export interface ApiPrediction {
   eventTicker: string;
   contractTicker: string;
   outcome: string;
+  entryPrice: string | null; // contract price at time of pick (e.g. "0.67")
   isCorrect: boolean | null;
   createdAt: string;
 }
@@ -106,7 +107,7 @@ export async function fetchPredictions(gameId: string, walletAddress?: string): 
 
 export async function submitPredictions(gameId: string, params: {
   walletAddress: string;
-  picks: { eventTicker: string; contractTicker: string; outcome: string }[];
+  picks: { eventTicker: string; contractTicker: string; outcome: string; entryPrice?: string }[];
 }): Promise<ApiPrediction[]> {
   const data = await request<{ predictions: ApiPrediction[] }>(`/games/${gameId}/predictions`, {
     method: 'POST',

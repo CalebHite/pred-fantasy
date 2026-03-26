@@ -1,25 +1,37 @@
 'use client';
 
-import { useEffect, use, useState } from 'react';
+import { useEffect, use, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PredictionWizard } from '@/components/predictions/PredictionWizard';
 import { GameStatusIndicator } from '@/components/game/GameStatusIndicator';
-import { LiveOddsChart } from '@/components/game/LiveOddsChart';
 import { Scoreboard } from '@/components/game/Scoreboard';
+import { PnLChart } from '@/components/game/PnLChart';
 import { UserBets, UserBet } from '@/components/game/UserBets';
 import { useWallet } from '@/contexts/WalletContext';
 import { useGame } from '@/contexts/GameContext';
 import { useUI } from '@/contexts/UIContext';
-import { getStrikesForCategory, MOCK_STRIKES } from '@/data/mock-strikes';
-import { MOCK_ODDS_HISTORY, MOCK_ODDS_USERS } from '@/data/mock-odds';
-import { MOCK_SCOREBOARD } from '@/data/mock-scores';
-import clsx from 'clsx';
+import {
+  fetchGame as apiFetchGame,
+  fetchPredictions,
+  submitPredictions,
+  fetchEvent,
+  ApiGame,
+  ApiPrediction,
+  ApiGeminiEvent,
+} from '@/lib/api/client';
+import { ScoreboardEntry } from '@/data/mock-scores';
+import { MarketStrikes } from '@/data/mock-strikes';
 
 interface PageProps {
   params: Promise<{ gameId: string }>;
 }
+
+/** Assign a consistent color to each participant based on index. */
+const PARTICIPANT_COLORS = [
+  '#FF6B35', '#00D9FF', '#9D4EDD', '#06FFA5', '#FFB700',
+  '#FF4D6D', '#3A86FF', '#FB5607', '#8338EC', '#FFBE0B',
+];
 
 export default function GamePage({ params }: PageProps) {
   const resolvedParams = use(params);
@@ -29,31 +41,95 @@ export default function GamePage({ params }: PageProps) {
   const { openModal, showNotification } = useUI();
   const [view, setView] = useState<'predictions' | 'live'>('live');
 
-  // Mock user bets data
-  const [userBets, setUserBets] = useState<UserBet[]>([
-    {
-      id: '1',
-      categoryId: 'nfl-superbowl',
-      categoryName: 'NFL Super Bowl Winner',
-      selectedOption: 'Kansas City Chiefs',
-      initialOdds: '+350',
-      currentOdds: '+300',
-      status: 'winning',
-    },
-    {
-      id: '2',
-      categoryId: 'btc-100k',
-      categoryName: 'Bitcoin $100K',
-      selectedOption: 'Yes, by Q2 2026',
-      initialOdds: '+150',
-      currentOdds: '+180',
-      status: 'pending',
-    },
-  ]);
+  // Real data state
+  const [apiGame, setApiGame] = useState<ApiGame | null>(null);
+  const [predictions, setPredictions] = useState<ApiPrediction[]>([]);
+  const [allPredictions, setAllPredictions] = useState<ApiPrediction[]>([]);
+  const [geminiEvents, setGeminiEvents] = useState<Record<string, ApiGeminiEvent>>({});
+  const [markets, setMarkets] = useState<MarketStrikes[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
+  // Load game from context
   useEffect(() => {
     loadGame(resolvedParams.gameId);
   }, [resolvedParams.gameId, loadGame]);
+
+  // Load all real data once we have a game ID
+  const loadRealData = useCallback(async () => {
+    try {
+      setIsLoadingData(true);
+      const gameId = resolvedParams.gameId;
+
+      // Fetch game details and all predictions in parallel
+      const [game, allPreds] = await Promise.all([
+        apiFetchGame(gameId),
+        fetchPredictions(gameId).catch(() => [] as ApiPrediction[]),
+      ]);
+
+      setApiGame(game);
+      setAllPredictions(allPreds);
+
+      // Filter predictions for current user
+      if (wallet?.address) {
+        const myParticipant = game.participants.find(
+          (p) => p.walletAddress === wallet.address
+        );
+        if (myParticipant) {
+          const myPreds = allPreds.filter(
+            (p) => p.participantId === myParticipant.id
+          );
+          setPredictions(myPreds);
+        }
+      }
+
+      // Fetch Gemini event details for each game event (for contracts/strikes)
+      const eventPromises = game.events.map(async (evt) => {
+        try {
+          const geminiEvent = await fetchEvent(evt.eventTicker);
+          return [evt.eventTicker, geminiEvent] as const;
+        } catch {
+          return null;
+        }
+      });
+
+      const results = await Promise.all(eventPromises);
+      const eventsMap: Record<string, ApiGeminiEvent> = {};
+      const marketsList: MarketStrikes[] = [];
+
+      for (const result of results) {
+        if (!result) continue;
+        const [ticker, geminiEvent] = result;
+        eventsMap[ticker] = geminiEvent;
+
+        // Build MarketStrikes from Gemini contracts
+        marketsList.push({
+          categoryId: ticker,
+          categoryName: geminiEvent.title,
+          strikes: geminiEvent.contracts.map((contract) => {
+            const ask = Number(contract.prices?.bestAsk);
+            return {
+              id: contract.ticker,
+              label: contract.label,
+              odds: !isNaN(ask) && ask > 0
+                ? `${Math.round(ask * 100)}¢`
+                : undefined,
+            };
+          }),
+        });
+      }
+
+      setGeminiEvents(eventsMap);
+      setMarkets(marketsList);
+    } catch (err) {
+      console.error('Failed to load game data:', err);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [resolvedParams.gameId, wallet?.address]);
+
+  useEffect(() => {
+    loadRealData();
+  }, [loadRealData]);
 
   useEffect(() => {
     if (!wallet?.isConnected) {
@@ -80,28 +156,136 @@ export default function GamePage({ params }: PageProps) {
   const isHost = wallet?.address === currentGame.host;
   const isParticipant = currentGame.participants.some((p) => p.address === wallet?.address);
 
-  // Get market data for predictions
-  const markets = currentGame.config.categories
-    .map((catId) => getStrikesForCategory(catId))
-    .filter((m): m is NonNullable<typeof m> => m !== null && m !== undefined);
+  // Build scoreboard from real participants using PnL (current value vs cost basis)
+  const buildScoreboard = (): ScoreboardEntry[] => {
+    if (!apiGame) return [];
 
-  const handlePredictionsComplete = (predictions: Record<string, string>) => {
-    showNotification({
-      message: 'Predictions submitted successfully!',
-      type: 'success',
+    return apiGame.participants.map((p, idx) => {
+      const participantPreds = allPredictions.filter(
+        (pred) => pred.participantId === p.id
+      );
+
+      let totalCost = 0;
+      let totalValue = 0;
+      let pricedCount = 0;
+
+      for (const pred of participantPreds) {
+        const geminiEvent = geminiEvents[pred.eventTicker];
+        const contract = geminiEvent?.contracts.find((c) => c.ticker === pred.contractTicker);
+
+        // Current value from live price
+        const rawCurrent = contract?.prices?.lastTradePrice ?? contract?.prices?.bestAsk;
+        const currentPrice = Number(rawCurrent);
+
+        // Entry price from when prediction was made
+        const entryPrice = Number(pred.entryPrice);
+
+        if (!isNaN(currentPrice) && currentPrice > 0) {
+          totalValue += currentPrice;
+          // If we have entry price use it, otherwise assume bought at current (PnL = 0 for that pick)
+          totalCost += !isNaN(entryPrice) && entryPrice > 0 ? entryPrice : currentPrice;
+          pricedCount++;
+        }
+      }
+
+      const pnl = totalValue - totalCost;
+      const avgOdds = pricedCount > 0 ? totalValue / pricedCount : 0;
+
+      return {
+        userId: String(p.id),
+        nickname: p.nickname,
+        address: p.walletAddress,
+        score: Math.round(pnl * 100), // cents for display
+        avgOdds,
+        numPicks: participantPreds.length,
+        totalCost,
+        totalValue,
+        pnl,
+        rank: idx + 1,
+        color: PARTICIPANT_COLORS[idx % PARTICIPANT_COLORS.length],
+      };
+    })
+    .sort((a, b) => (b.pnl ?? 0) - (a.pnl ?? 0))
+    .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+  };
+
+  // Build user bets from real predictions
+  const buildUserBets = (): UserBet[] => {
+    if (!apiGame) return [];
+
+    return predictions.map((pred) => {
+      const gameEvent = apiGame.events.find((e) => e.eventTicker === pred.eventTicker);
+      const geminiEvent = geminiEvents[pred.eventTicker];
+      const contract = geminiEvent?.contracts.find((c) => c.ticker === pred.contractTicker);
+
+      let status: UserBet['status'] = 'pending';
+      if (pred.isCorrect === true) status = 'winning';
+      else if (pred.isCorrect === false) status = 'losing';
+
+      const askPrice = Number(contract?.prices?.bestAsk);
+
+      return {
+        id: String(pred.id),
+        categoryId: pred.eventTicker,
+        categoryName: gameEvent?.eventTitle || pred.eventTicker,
+        selectedOption: contract?.label || pred.contractTicker,
+        currentOdds: !isNaN(askPrice) && askPrice > 0
+          ? `${Math.round(askPrice * 100)}¢`
+          : undefined,
+        status,
+      };
     });
-    setView('live');
-    // TODO: Save predictions to backend/context
+  };
+
+  const handlePredictionsComplete = async (predictionMap: Record<string, string>) => {
+    if (!wallet?.address) return;
+
+    try {
+      // Convert prediction map to picks array, capturing current price as entry price
+      const picks = Object.entries(predictionMap).map(([eventTicker, contractTicker]) => {
+        const geminiEvent = geminiEvents[eventTicker];
+        const contract = geminiEvent?.contracts.find((c) => c.ticker === contractTicker);
+        const entryPrice = contract?.prices?.bestAsk?.toString();
+        return {
+          eventTicker,
+          contractTicker,
+          outcome: 'yes' as const,
+          entryPrice,
+        };
+      });
+
+      await submitPredictions(resolvedParams.gameId, {
+        walletAddress: wallet.address,
+        picks,
+      });
+
+      showNotification({
+        message: 'Predictions submitted successfully!',
+        type: 'success',
+      });
+      setView('live');
+
+      // Reload data to reflect new predictions
+      loadRealData();
+    } catch (err) {
+      showNotification({
+        message: err instanceof Error ? err.message : 'Failed to submit predictions',
+        type: 'error',
+      });
+    }
   };
 
   const handleStartPredictions = () => {
     setView('predictions');
   };
 
-  // Calculate time remaining (mock)
+  // Calculate time remaining
   const timeRemaining = Math.floor(
     (new Date(currentGame.config.resolutionTime).getTime() - new Date().getTime()) / 1000
   );
+
+  const scoreboard = buildScoreboard();
+  const userBets = buildUserBets();
 
   if (view === 'predictions') {
     return (
@@ -117,35 +301,18 @@ export default function GamePage({ params }: PageProps) {
       <div className="bg-gray-50 sticky top-20 z-30 pt-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            {/* Left: Settings/Share Icons */}
+            {/* Left: Game Code + Actions */}
             <div className="flex items-center gap-3">
-              <button
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Settings"
-              >
-                <svg
-                  className="w-5 h-5 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-              </button>
+              <span className="text-sm font-mono text-gray-500">
+                {currentGame.code}
+              </span>
               <button
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Share"
+                onClick={() => {
+                  navigator.clipboard.writeText(currentGame.code);
+                  showNotification({ message: 'Game code copied!', type: 'success' });
+                }}
               >
                 <svg
                   className="w-5 h-5 text-gray-600"
@@ -169,33 +336,104 @@ export default function GamePage({ params }: PageProps) {
               timeRemaining={timeRemaining > 0 ? timeRemaining : undefined}
             />
 
-            {/* Right: Empty space for symmetry */}
-            <div className="w-[140px]"></div>
+            {/* Right: Make Predictions button */}
+            <div className="w-[140px] flex justify-end">
+              {isParticipant && predictions.length === 0 && markets.length > 0 && (
+                <Button onClick={handleStartPredictions} variant="black" size="sm">
+                  Make Picks
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Panel - Your Bets */}
-          <div className="lg:col-span-1">
-            <UserBets bets={userBets} />
+        {isLoadingData ? (
+          <div className="flex items-center justify-center py-20">
+            <p className="text-sm font-light text-gray-500">Loading game data...</p>
           </div>
+        ) : (
+          <>
+            <div className="grid lg:grid-cols-3 gap-6">
+              {/* Left Panel - Your Bets */}
+              <div className="lg:col-span-1">
+                <UserBets bets={userBets} />
+                {/* Show events list if no predictions yet */}
+                {userBets.length === 0 && markets.length > 0 && (
+                  <div className="mt-4 bg-white rounded-2xl shadow-sm p-6">
+                    <h3 className="text-lg font-medium text-black mb-4">Events in This Game</h3>
+                    <div className="space-y-2">
+                      {markets.map((m) => (
+                        <div
+                          key={m.categoryId}
+                          className="p-3 rounded-xl border border-gray-200 text-sm"
+                        >
+                          <p className="font-medium text-gray-900">{m.categoryName}</p>
+                          <p className="text-xs font-light text-gray-500 mt-1">
+                            {m.strikes.length} contract{m.strikes.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
-          {/* Right Panel - Scoreboard */}
-          <div className="lg:col-span-2">
-            <Scoreboard
-              participants={MOCK_SCOREBOARD}
-              currentUserId={wallet?.address ? 'user-1' : undefined}
-            />
-          </div>
-        </div>
+              {/* Right Panel - Scoreboard */}
+              <div className="lg:col-span-2">
+                <Scoreboard
+                  participants={scoreboard}
+                  currentUserId={
+                    apiGame?.participants.find((p) => p.walletAddress === wallet?.address)
+                      ? String(apiGame.participants.find((p) => p.walletAddress === wallet?.address)!.id)
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
 
-        {/* Live Odds Chart - Below Main Content */}
-        <div className="mt-8">
-          <LiveOddsChart data={MOCK_ODDS_HISTORY} users={MOCK_ODDS_USERS} />
-        </div>
+            {/* PnL Chart */}
+            <div className="mt-8">
+              <PnLChart
+                participants={scoreboard}
+                currentUserId={
+                  apiGame?.participants.find((p) => p.walletAddress === wallet?.address)
+                    ? String(apiGame.participants.find((p) => p.walletAddress === wallet?.address)!.id)
+                    : undefined
+                }
+              />
+            </div>
+
+            {/* Game Info Cards - Below Main Content */}
+            <div className="mt-8 grid md:grid-cols-3 gap-4">
+              <div className="bg-white rounded-2xl shadow-sm p-6">
+                <p className="text-sm font-light text-gray-500">Buy-in</p>
+                <p className="text-2xl font-medium text-black mt-1">
+                  ${currentGame.config.buyInAmount}
+                </p>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm p-6">
+                <p className="text-sm font-light text-gray-500">Participants</p>
+                <p className="text-2xl font-medium text-black mt-1">
+                  {currentGame.participants.length}
+                  {currentGame.config.maxParticipants && (
+                    <span className="text-sm font-light text-gray-400">
+                      {' '}/ {currentGame.config.maxParticipants}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm p-6">
+                <p className="text-sm font-light text-gray-500">Events</p>
+                <p className="text-2xl font-medium text-black mt-1">
+                  {apiGame?.events.length || 0}
+                </p>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

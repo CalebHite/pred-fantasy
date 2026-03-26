@@ -17,8 +17,8 @@ export default function JoinPage() {
   };
 
   const handleContinue = () => {
-    if (gameCode.length !== 7) {
-      setError('Please enter a valid 7-character game code');
+    if (gameCode.length !== 6) {
+      setError('Please enter a valid 6-character game code');
       return;
     }
 
@@ -55,7 +55,7 @@ export default function JoinPage() {
               value={gameCode}
               onChange={handleGameCodeChange}
               error={error}
-              length={7}
+              length={6}
             />
           </div>
 
@@ -63,7 +63,7 @@ export default function JoinPage() {
           <div className="flex justify-center">
             <Button
               onClick={handleContinue}
-              disabled={gameCode.length !== 7}
+              disabled={gameCode.length !== 6}
               variant="black"
               size="lg"
             >
