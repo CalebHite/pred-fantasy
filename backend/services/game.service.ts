@@ -250,15 +250,19 @@ export async function submitPredictions(gameId: string, input: SubmitPredictions
       }
     }
 
-    // Validate: One pick per category
-    const categoryCounts = new Map<string, number>();
-    for (const pick of input.picks) {
-      categoryCounts.set(pick.categoryKey, (categoryCounts.get(pick.categoryKey) || 0) + 1);
+    // Validate: Minimum 2 total picks
+    if (input.picks.length < 2) {
+      throw new Error('At least 2 picks are required');
     }
-    for (const [categoryKey, count] of categoryCounts.entries()) {
-      if (count > 1) {
-        throw new Error(`Multiple picks for category ${categoryKey}. Only one pick per category allowed.`);
+
+    // Validate: No duplicate picks
+    const pickKeys = new Set<string>();
+    for (const pick of input.picks) {
+      const key = `${pick.categoryKey}:${pick.eventTicker}:${pick.contractTicker}:${pick.outcome}`;
+      if (pickKeys.has(key)) {
+        throw new Error(`Duplicate pick detected`);
       }
+      pickKeys.add(key);
     }
   }
 
