@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { GameCodeInput } from '@/components/ui/GameCodeInput';
 import { useWallet } from '@/contexts/WalletContext';
@@ -13,6 +13,10 @@ export default function Home() {
   const router = useRouter();
   const [gameCode, setGameCode] = useState('');
   const [error, setError] = useState('');
+  const [isAutoScrolling, setIsAutoScrolling] = useState(false);
+  const heroRef = useRef<HTMLDivElement>(null);
+  const joinRef = useRef<HTMLDivElement>(null);
+  const lastScrollY = useRef(0);
 
   const handleCreateGame = () => {
     if (!wallet?.isConnected) {
@@ -47,10 +51,43 @@ export default function Home() {
     }
   };
 
+  // Bidirectional auto-scroll effect
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isAutoScrolling || !heroRef.current || !joinRef.current) return;
+
+      const scrollPosition = window.scrollY;
+      const scrollDirection = scrollPosition > lastScrollY.current ? 'down' : 'up';
+      lastScrollY.current = scrollPosition;
+
+      const heroHeight = heroRef.current.offsetHeight;
+      const joinTop = joinRef.current.offsetTop;
+
+      // Scrolling down: if past 40% of hero section, snap to join section
+      if (scrollDirection === 'down' && scrollPosition > heroHeight * 0.4 && scrollPosition < heroHeight * 0.9) {
+        setIsAutoScrolling(true);
+        joinRef.current.scrollIntoView({ behavior: 'smooth' });
+        // Reset after animation completes
+        setTimeout(() => setIsAutoScrolling(false), 1000);
+      }
+
+      // Scrolling up: if in upper portion of join section, snap back to hero
+      if (scrollDirection === 'up' && scrollPosition < joinTop + 200 && scrollPosition > heroHeight * 0.3) {
+        setIsAutoScrolling(true);
+        heroRef.current.scrollIntoView({ behavior: 'smooth' });
+        // Reset after animation completes
+        setTimeout(() => setIsAutoScrolling(false), 1000);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isAutoScrolling]);
+
   return (
     <>
       {/* Hero Section */}
-      <div className="min-h-[calc(100vh-5rem)] flex items-start bg-white relative overflow-hidden">
+      <div ref={heroRef} className="min-h-[calc(100vh-5rem)] flex items-start bg-white relative overflow-hidden">
         {/* Background Image - Cropped on Right */}
         <div
           className="absolute right-0 top-0 bottom-0 w-full lg:w-[50%] bg-cover bg-center opacity-20 lg:opacity-100"
@@ -92,7 +129,7 @@ export default function Home() {
       </div>
 
       {/* Join Game Section */}
-      <div id="join-game" className="min-h-[calc(100vh-5rem)] flex items-center justify-center p-4 bg-white">
+      <div ref={joinRef} id="join-game" className="min-h-[calc(100vh-5rem)] flex items-center justify-center p-4 bg-white">
         <div className="w-full max-w-2xl flex flex-col items-center">
           {/* Title */}
           <h1 className="text-5xl font-medium text-black text-center mb-8">
